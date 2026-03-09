@@ -4,6 +4,10 @@ import asyncio
 import json
 import logging
 import os
+import re
+import xml.etree.ElementTree as ET
+from urllib.parse import quote_plus
+
 from typing import Any, Optional
 
 import httpx
@@ -14,6 +18,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scholar-search-mcp")
 
 API_BASE_URL = "https://api.semanticscholar.org/graph/v1"
+ARXIV_API_BASE = "https://export.arxiv.org/api/query"
+
+# Atom/arXiv XML namespaces
+ATOM_NS = "http://www.w3.org/2005/Atom"
+ARXIV_NS = "http://arxiv.org/schemas/atom"
+OPENSEARCH_NS = "http://a9.com/-/spec/opensearch/1.1/"
 
 DEFAULT_PAPER_FIELDS = [
     "paperId",
@@ -39,6 +49,147 @@ DEFAULT_AUTHOR_FIELDS = [
     "citationCount",
     "hIndex",
 ]
+
+
+def _arxiv_id_from_url(id_url: str) -> str:
+    """Extract arXiv id from abs URL, e.g. http://arxiv.org/abs/2201.00978v1 -> 2201.00978."""
+    if not id_url:
+        return ""
+    m = re.search(r"arxiv\.org/abs/([\w.-]+)", id_url, re.I)
+    if not m:
+        return id_url
+    raw = m.group(1)
+    return re.sub(r"v\d+$", "", raw)  # strip version
+
+
+def _text(el: Optional[ET.Element]) -> str:
+    return (el.text or "").strip() if el is not None else ""
+
+
+class ArxivClient:
+    """arXiv API client (https://info.arxiv.org/help/api/user-manual.html)."""
+
+    def __init__(self, timeout: float = 30.0):
+        self.timeout = timeout
+
+    async def search(
+        self,
+        query: str,
+        limit: int = 10,
+        start: int = 0,
+        year: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Search arXiv. Returns shape compatible with merge: list of normalized
+        paper dicts and totalResults.
+        """
+        # search_query: use 'all:' for full-text search (title, abstract, etc.)
+        search_query = f"all:{query.strip()}"
+        params: dict[str, Any] = {
+            "search_query": search_query,
+            "start": start,
+            "max_results": min(limit, 2000),  # arXiv allows up to 2000 per request
+            "sortBy": "relevance",
+            "sortOrder": "descending",
+        }
+        if year:
+            # submittedDate filter: [YYYYMMDDTTTT+TO+YYYYMMDDTTTT] in GMT
+            try:
+                if "-" in year:
+                    y1, y2 = year.split("-")[:2]
+                    y1, y2 = y1.strip()[:4], y2.strip()[:4]
+                    params["search_query"] = f"{params['search_query']}+AND+submittedDate:[{y1}01010000+TO+{y2}12312359]"
+                else:
+                    y = year.strip()[:4]
+                    params["search_query"] = f"{params['search_query']}+AND+submittedDate:[{y}01010000+TO+{y}12312359]"
+            except Exception:
+                pass
+
+        url = f"{ARXIV_API_BASE}?search_query={quote_plus(params['search_query'])}&start={params['start']}&max_results={params['max_results']}&sortBy={params['sortBy']}&sortOrder={params['sortOrder']}"
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+        except Exception as e:
+            logger.warning("arXiv search failed: %s", e)
+            return {"totalResults": 0, "entries": []}
+
+        root = ET.fromstring(response.text)
+        total_el = root.find(f"{{{OPENSEARCH_NS}}}totalResults")
+        total_results = int(_text(total_el)) if total_el is not None else 0
+
+        entries: list[dict[str, Any]] = []
+        for entry in root.findall(f"{{{ATOM_NS}}}entry"):
+            # Skip error entries (arXiv returns errors as entry with summary containing "Error")
+            summary_el = entry.find(f"{{{ATOM_NS}}}summary")
+            if summary_el is not None and _text(entry.find(f"{{{ATOM_NS}}}title")).lower() == "error":
+                continue
+            paper = self._entry_to_paper(entry)
+            if paper:
+                entries.append(paper)
+        return {"totalResults": total_results, "entries": entries}
+
+    def _entry_to_paper(self, entry: ET.Element) -> Optional[dict[str, Any]]:
+        """Convert one Atom entry to S2-compatible paper dict."""
+        id_el = entry.find(f"{{{ATOM_NS}}}id")
+        id_url = _text(id_el) if id_el is not None else ""
+        arxiv_id = _arxiv_id_from_url(id_url)
+        if not arxiv_id:
+            return None
+
+        title_el = entry.find(f"{{{ATOM_NS}}}title")
+        title = _text(title_el).replace("\n", " ").strip()
+
+        summary_el = entry.find(f"{{{ATOM_NS}}}summary")
+        abstract = _text(summary_el).replace("\n", " ").strip() if summary_el is not None else ""
+
+        published_el = entry.find(f"{{{ATOM_NS}}}published")
+        updated_el = entry.find(f"{{{ATOM_NS}}}updated")
+        date_str = _text(published_el) or _text(updated_el)
+        year_val: Optional[int] = None
+        if date_str and len(date_str) >= 4:
+            try:
+                year_val = int(date_str[:4])
+            except ValueError:
+                pass
+
+        authors: list[dict[str, Any]] = []
+        for author in entry.findall(f"{{{ATOM_NS}}}author"):
+            name_el = author.find(f"{{{ATOM_NS}}}name")
+            name = _text(name_el) if name_el is not None else ""
+            if name:
+                authors.append({"name": name})
+
+        link_alternate = None
+        link_pdf = None
+        for link in entry.findall(f"{{{ATOM_NS}}}link"):
+            href = link.get("href") or ""
+            rel = link.get("rel") or ""
+            title_attr = (link.get("title") or "").lower()
+            if rel == "alternate":
+                link_alternate = href
+            elif "pdf" in title_attr or (rel == "related" and "pdf" in href):
+                link_pdf = href
+
+        primary_cat = entry.find(f"{{{ARXIV_NS}}}primary_category")
+        venue = primary_cat.get("term") if primary_cat is not None else None
+
+        return {
+            "paperId": arxiv_id,
+            "title": title,
+            "abstract": abstract or None,
+            "year": year_val,
+            "authors": authors,
+            "citationCount": None,
+            "referenceCount": None,
+            "influentialCitationCount": None,
+            "venue": venue,
+            "publicationTypes": None,
+            "publicationDate": date_str or None,
+            "url": link_alternate or f"https://arxiv.org/abs/{arxiv_id}",
+            "pdfUrl": link_pdf,
+            "source": "arxiv",
+        }
 
 
 class SemanticScholarClient:
@@ -207,6 +358,7 @@ class SemanticScholarClient:
 app = Server("scholar-search")
 api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
 client = SemanticScholarClient(api_key=api_key)
+arxiv_client = ArxivClient()
 
 
 @app.list_tools()
@@ -385,17 +537,59 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+def _merge_search_results(
+    s2_response: dict[str, Any],
+    arxiv_response: dict[str, Any],
+    limit: int,
+) -> dict[str, Any]:
+    """Merge Semantic Scholar and arXiv results; keep same response shape (total, offset, data)."""
+    s2_data = list(s2_response.get("data") or [])
+    arxiv_entries = list(arxiv_response.get("entries") or [])
+    for p in s2_data:
+        p.setdefault("source", "semantic_scholar")
+    # Dedupe: skip arXiv entries whose id already appears in S2 (when externalIds present)
+    seen_arxiv_ids = set()
+    for p in s2_data:
+        eid = p.get("externalIds") or {}
+        arxiv_id = eid.get("ArXiv")
+        if arxiv_id:
+            seen_arxiv_ids.add(str(arxiv_id))
+    merged = list(s2_data)
+    for p in arxiv_entries:
+        aid = p.get("paperId") or ""
+        if aid and aid not in seen_arxiv_ids:
+            seen_arxiv_ids.add(aid)
+            merged.append(p)
+    merged = merged[:limit]
+    return {
+        "total": len(merged),
+        "offset": s2_response.get("offset", 0),
+        "data": merged,
+    }
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Handle tool calls."""
     if name == "search_papers":
-        result = await client.search_papers(
+        limit = arguments.get("limit", 10)
+        limit = min(max(1, limit), 100)
+        year = arguments.get("year")
+        # Query both sources in parallel; venue filter only applies to S2
+        s2_task = client.search_papers(
             query=arguments["query"],
-            limit=arguments.get("limit", 10),
+            limit=limit,
             fields=arguments.get("fields"),
-            year=arguments.get("year"),
+            year=year,
             venue=arguments.get("venue"),
         )
+        arxiv_task = arxiv_client.search(
+            query=arguments["query"],
+            limit=limit,
+            year=year,
+        )
+        s2_response, arxiv_response = await asyncio.gather(s2_task, arxiv_task)
+        result = _merge_search_results(s2_response, arxiv_response, limit)
     elif name == "get_paper_details":
         result = await client.get_paper_details(
             paper_id=arguments["paper_id"],

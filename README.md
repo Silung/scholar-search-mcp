@@ -1,10 +1,10 @@
 # Scholar Search MCP
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that integrates the [Semantic Scholar API](https://www.semanticscholar.org/product/api) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
+A MCP server that integrates the [Semantic Scholar API](https://www.semanticscholar.org/product/api) and the [arXiv API](https://info.arxiv.org/help/api/user-manual.html) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
 
 ## Features
 
-- **Search papers** – Keyword search with optional year and venue filters
+- **Search papers** – Keyword search over **Semantic Scholar** and **arXiv**; optional year and venue filters (venue applies to Semantic Scholar only)
 - **Paper details** – Full metadata (title, authors, abstract, citations, etc.)
 - **Citations & references** – Papers that cite or are cited by a given paper
 - **Author info** – Author profile and paper list
@@ -80,5 +80,4 @@ MIT
 ## Links
 
 - [Semantic Scholar API](https://api.semanticscholar.org/api-docs)
-- [Model Context Protocol](https://modelcontextprotocol.io)
-- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+- [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)
