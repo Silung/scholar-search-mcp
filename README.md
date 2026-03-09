@@ -34,6 +34,20 @@ Add:
     "scholar-search": {
       "command": "python",
       "args": ["-m", "scholar_search_mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+If you have the api-key of Semantic Scholar:
+
+```json
+{
+  "mcpServers": {
+    "scholar-search": {
+      "command": "python",
+      "args": ["-m", "scholar_search_mcp"],
       "env": {
         "SEMANTIC_SCHOLAR_API_KEY": "your-api-key-here"
       }
@@ -55,16 +69,18 @@ The Semantic Scholar API works without a key with lower limits. For higher limit
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `search_papers` | Search by query; optional `limit`, `fields`, `year`, `venue` |
-| `get_paper_details` | Get one paper by ID (DOI, ArXiv ID, S2 ID, or URL) |
-| `get_paper_citations` | Papers that cite the given paper |
-| `get_paper_references` | References of the given paper |
-| `get_author_info` | Author profile by ID |
-| `get_author_papers` | Papers by author |
-| `get_paper_recommendations` | Similar papers for a given paper |
-| `batch_get_papers` | Details for up to 500 paper IDs |
+
+| Tool                        | Description                                                  |
+| --------------------------- | ------------------------------------------------------------ |
+| `search_papers`             | Search by query; optional `limit`, `fields`, `year`, `venue` |
+| `get_paper_details`         | Get one paper by ID (DOI, ArXiv ID, S2 ID, or URL)           |
+| `get_paper_citations`       | Papers that cite the given paper                             |
+| `get_paper_references`      | References of the given paper                                |
+| `get_author_info`           | Author profile by ID                                         |
+| `get_author_papers`         | Papers by author                                             |
+| `get_paper_recommendations` | Similar papers for a given paper                             |
+| `batch_get_papers`          | Details for up to 500 paper IDs                              |
+
 
 ## Testing with MCP Inspector
 
@@ -81,3 +97,4 @@ MIT
 
 - [Semantic Scholar API](https://api.semanticscholar.org/api-docs)
 - [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)
+
