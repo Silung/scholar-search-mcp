@@ -23,9 +23,12 @@ jobs:
     
     - name: Build package
       run: python -m build
+
+    - name: Validate distributions
+      run: python -m twine check dist/*
     
     - name: Publish to PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
+      run: python -m twine upload --non-interactive --verbose dist/*
