@@ -5,14 +5,13 @@ import json
 import logging
 import os
 import re
-import xml.etree.ElementTree as ET
+from typing import Any, Optional
 from urllib.parse import quote_plus
 
-from typing import Any, Optional
-
 import httpx
+from defusedxml import ElementTree as ET
 from mcp.server import Server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scholar-search-mcp")
@@ -56,7 +55,7 @@ DEFAULT_AUTHOR_FIELDS = [
 
 
 def _arxiv_id_from_url(id_url: str) -> str:
-    """Extract arXiv id from abs URL, e.g. http://arxiv.org/abs/2201.00978v1 -> 2201.00978."""
+    """Extract an arXiv id from an abstract URL and strip any version suffix."""
     if not id_url:
         return ""
     m = re.search(r"arxiv\.org/abs/([\w.-]+)", id_url, re.I)
@@ -66,7 +65,7 @@ def _arxiv_id_from_url(id_url: str) -> str:
     return re.sub(r"v\d+$", "", raw)  # strip version
 
 
-def _text(el: Optional[ET.Element]) -> str:
+def _text(el: Optional[Any]) -> str:
     return (el.text or "").strip() if el is not None else ""
 
 
@@ -89,23 +88,23 @@ class CoreApiClient:
         paper dicts and total. Works without API key (subject to rate limits);
         with key you get higher limits.
         """
-        # CORE API GET /v3/search/works: q, scroll, offset, limit, stats only (no sort in docs)
+        # CORE API GET /v3/search/works: q, scroll, offset, limit, stats only.
         params: dict[str, Any] = {
             "q": query.strip(),
             "limit": min(limit, 100),
             "offset": start,
         }
         if year:
-            try:
-                if "-" in year:
-                    y1, y2 = year.split("-")[:2]
-                    y1, y2 = y1.strip()[:4], y2.strip()[:4]
+            if "-" in year:
+                y1, y2 = year.split("-", maxsplit=1)
+                y1 = y1.strip()[:4]
+                y2 = y2.strip()[:4]
+                if y1.isdigit() and y2.isdigit():
                     params["q"] = f"{params['q']} yearPublished:[{y1} TO {y2}]"
-                else:
-                    y = year.strip()[:4]
+            else:
+                y = year.strip()[:4]
+                if y.isdigit():
                     params["q"] = f"{params['q']} yearPublished:{y}"
-            except Exception:
-                pass
 
         headers: dict[str, str] = {}
         if self.api_key:
@@ -131,7 +130,8 @@ class CoreApiClient:
                 entries.append(paper)
         if results and len(entries) < len(results):
             logger.debug(
-                "CORE returned %s results, %s had valid url/title (some may lack doi/downloadUrl)",
+                "CORE returned %s results, %s had valid url/title "
+                "(some may lack doi/downloadUrl)",
                 len(results),
                 len(entries),
             )
@@ -153,16 +153,29 @@ class CoreApiClient:
             elif isinstance(du, dict):
                 url = du.get("url") or du.get("link")
                 if not url and isinstance(du.get("urls"), list) and du["urls"]:
-                    url = du["urls"][0] if isinstance(du["urls"][0], str) else (du["urls"][0].get("url") or du["urls"][0].get("link") if isinstance(du["urls"][0], dict) else None)
+                    first_url = du["urls"][0]
+                    if isinstance(first_url, str):
+                        url = first_url
+                    elif isinstance(first_url, dict):
+                        url = first_url.get("url") or first_url.get("link")
         if not url and r.get("sourceFulltextUrls"):
             su = r["sourceFulltextUrls"]
             if isinstance(su, str):
                 url = su
             elif isinstance(su, list) and su:
-                url = su[0] if isinstance(su[0], str) else (su[0].get("url") or su[0].get("link") if isinstance(su[0], dict) else None)
+                first_source_url = su[0]
+                if isinstance(first_source_url, str):
+                    url = first_source_url
+                elif isinstance(first_source_url, dict):
+                    url = first_source_url.get("url") or first_source_url.get(
+                        "link"
+                    )
             elif isinstance(su, dict):
                 urls = su.get("urls") or su.get("url") or su.get("link")
-                url = urls[0] if isinstance(urls, list) and urls else (urls if isinstance(urls, str) else None)
+                if isinstance(urls, list) and urls:
+                    url = urls[0]
+                elif isinstance(urls, str):
+                    url = urls
         if not url and r.get("id") is not None:
             url = f"https://core.ac.uk/works/{r['id']}"
         if not url:
@@ -185,7 +198,12 @@ class CoreApiClient:
 
         authors: list[dict[str, Any]] = []
         for a in r.get("authors") or []:
-            name = a.get("name") if isinstance(a, dict) else (a if isinstance(a, str) else None)
+            if isinstance(a, dict):
+                name = a.get("name")
+            elif isinstance(a, str):
+                name = a
+            else:
+                name = None
             if name:
                 authors.append({"name": name})
 
@@ -194,7 +212,16 @@ class CoreApiClient:
             pdf_url = pdf_url.get("url") if pdf_url else None
         if not pdf_url and r.get("sourceFulltextUrls"):
             su = r["sourceFulltextUrls"]
-            pdf_url = su[0] if isinstance(su, list) and su else (su if isinstance(su, str) else None)
+            if isinstance(su, list) and su:
+                pdf_url = su[0]
+            elif isinstance(su, str):
+                pdf_url = su
+
+        venue = ", ".join(
+            j.get("title", "")
+            for j in (r.get("journals") or [])
+            if isinstance(j, dict) and j.get("title")
+        )
 
         return {
             "paperId": str(r.get("id", r.get("doi", ""))),
@@ -205,7 +232,7 @@ class CoreApiClient:
             "citationCount": r.get("citationCount"),
             "referenceCount": None,
             "influentialCitationCount": None,
-            "venue": (", ".join(j.get("title", "") for j in (r.get("journals") or []) if isinstance(j, dict) and j.get("title")) or None),
+            "venue": venue or None,
             "publicationTypes": r.get("documentType"),
             "publicationDate": date_str,
             "url": url,
@@ -242,18 +269,28 @@ class ArxivClient:
         }
         if year:
             # submittedDate filter: [YYYYMMDDTTTT+TO+YYYYMMDDTTTT] in GMT
-            try:
-                if "-" in year:
-                    y1, y2 = year.split("-")[:2]
-                    y1, y2 = y1.strip()[:4], y2.strip()[:4]
-                    params["search_query"] = f"{params['search_query']}+AND+submittedDate:[{y1}01010000+TO+{y2}12312359]"
-                else:
-                    y = year.strip()[:4]
-                    params["search_query"] = f"{params['search_query']}+AND+submittedDate:[{y}01010000+TO+{y}12312359]"
-            except Exception:
-                pass
+            if "-" in year:
+                y1, y2 = year.split("-", maxsplit=1)
+                y1 = y1.strip()[:4]
+                y2 = y2.strip()[:4]
+                if y1.isdigit() and y2.isdigit():
+                    params["search_query"] = (
+                        f"{params['search_query']}+AND+submittedDate:"
+                        f"[{y1}01010000+TO+{y2}12312359]"
+                    )
+            else:
+                y = year.strip()[:4]
+                if y.isdigit():
+                    params["search_query"] = (
+                        f"{params['search_query']}+AND+submittedDate:"
+                        f"[{y}01010000+TO+{y}12312359]"
+                    )
 
-        url = f"{ARXIV_API_BASE}?search_query={quote_plus(params['search_query'])}&start={params['start']}&max_results={params['max_results']}&sortBy={params['sortBy']}&sortOrder={params['sortOrder']}"
+        url = (
+            f"{ARXIV_API_BASE}?search_query={quote_plus(params['search_query'])}"
+            f"&start={params['start']}&max_results={params['max_results']}"
+            f"&sortBy={params['sortBy']}&sortOrder={params['sortOrder']}"
+        )
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url)
@@ -268,16 +305,17 @@ class ArxivClient:
 
         entries: list[dict[str, Any]] = []
         for entry in root.findall(f"{{{ATOM_NS}}}entry"):
-            # Skip error entries (arXiv returns errors as entry with summary containing "Error")
+            # Skip error entries returned by arXiv as feed entries.
             summary_el = entry.find(f"{{{ATOM_NS}}}summary")
-            if summary_el is not None and _text(entry.find(f"{{{ATOM_NS}}}title")).lower() == "error":
+            title_text = _text(entry.find(f"{{{ATOM_NS}}}title")).lower()
+            if summary_el is not None and title_text == "error":
                 continue
             paper = self._entry_to_paper(entry)
             if paper:
                 entries.append(paper)
         return {"totalResults": total_results, "entries": entries}
 
-    def _entry_to_paper(self, entry: ET.Element) -> Optional[dict[str, Any]]:
+    def _entry_to_paper(self, entry: Any) -> Optional[dict[str, Any]]:
         """Convert one Atom entry to S2-compatible paper dict."""
         id_el = entry.find(f"{{{ATOM_NS}}}id")
         id_url = _text(id_el) if id_el is not None else ""
@@ -289,7 +327,11 @@ class ArxivClient:
         title = _text(title_el).replace("\n", " ").strip()
 
         summary_el = entry.find(f"{{{ATOM_NS}}}summary")
-        abstract = _text(summary_el).replace("\n", " ").strip() if summary_el is not None else ""
+        abstract = (
+            _text(summary_el).replace("\n", " ").strip()
+            if summary_el is not None
+            else ""
+        )
 
         published_el = entry.find(f"{{{ATOM_NS}}}published")
         updated_el = entry.find(f"{{{ATOM_NS}}}updated")
@@ -345,7 +387,7 @@ class SemanticScholarClient:
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key
-        self.headers = {}
+        self.headers: dict[str, str] = {}
         if api_key:
             self.headers["x-api-key"] = api_key
 
@@ -388,11 +430,15 @@ class SemanticScholarClient:
                         )
                         await asyncio.sleep(delay)
                         continue
-                        
+
                     response.raise_for_status()
 
                 response.raise_for_status()
                 return response.json()
+
+            raise RuntimeError(
+                "Semantic Scholar request retry loop exited unexpectedly"
+            )
 
     async def search_papers(
         self,
@@ -532,7 +578,9 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_papers",
-            description="Search academic papers by keyword. Optional filters: year, venue.",
+            description=(
+                "Search academic papers by keyword. Optional filters: year, venue."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -562,7 +610,10 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_paper_details",
-            description="Get paper details. Supports DOI, ArXiv ID, Semantic Scholar ID, or URL.",
+            description=(
+                "Get paper details. Supports DOI, ArXiv ID, Semantic Scholar ID, "
+                "or URL."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -707,12 +758,12 @@ def _merge_search_results(
     arxiv_response: dict[str, Any],
     limit: int,
 ) -> dict[str, Any]:
-    """Merge Semantic Scholar and arXiv results; keep same response shape (total, offset, data)."""
+    """Merge Semantic Scholar and arXiv results into the shared response shape."""
     s2_data = list(s2_response.get("data") or [])
     arxiv_entries = list(arxiv_response.get("entries") or [])
     for p in s2_data:
         p.setdefault("source", "semantic_scholar")
-    # Dedupe: skip arXiv entries whose id already appears in S2 (when externalIds present)
+    # Skip arXiv entries already represented in Semantic Scholar results.
     seen_arxiv_ids = set()
     for p in s2_data:
         eid = p.get("externalIds") or {}
@@ -733,7 +784,9 @@ def _merge_search_results(
     }
 
 
-def _core_response_to_merged(core_response: dict[str, Any], limit: int) -> dict[str, Any]:
+def _core_response_to_merged(
+    core_response: dict[str, Any], limit: int
+) -> dict[str, Any]:
     """Convert CORE search response to unified shape (total, offset, data)."""
     entries = list(core_response.get("entries") or [])
     return {
@@ -751,7 +804,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         limit = min(max(1, limit), 100)
         year = arguments.get("year")
         query = arguments["query"]
-        # Fallback chain: CORE → Semantic Scholar → arXiv (each step only if channel enabled)
+        # Fallback chain: CORE -> Semantic Scholar -> arXiv.
         result = None
         if enable_core:
             try:
@@ -765,7 +818,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     result = _core_response_to_merged(core_response, limit)
                     logger.info("search_papers: using CORE API results")
             except Exception as e:
-                logger.info("search_papers: CORE failed (%s), falling back to next channel", e)
+                logger.info(
+                    "search_papers: CORE failed (%s), falling back to next "
+                    "channel",
+                    e,
+                )
         if result is None and enable_semantic_scholar:
             try:
                 s2_response = await client.search_papers(
@@ -776,16 +833,21 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     venue=arguments.get("venue"),
                 )
                 if s2_response.get("data"):
+                    response_data = s2_response.get("data") or []
                     result = {
-                        "total": s2_response.get("total", len(s2_response.get("data", []))),
+                        "total": s2_response.get("total", len(response_data)),
                         "offset": s2_response.get("offset", 0),
-                        "data": (s2_response.get("data") or [])[:limit],
+                        "data": response_data[:limit],
                     }
                     for p in result["data"]:
                         p.setdefault("source", "semantic_scholar")
                     logger.info("search_papers: using Semantic Scholar results")
             except Exception as e:
-                logger.info("search_papers: Semantic Scholar failed (%s), falling back to next channel", e)
+                logger.info(
+                    "search_papers: Semantic Scholar failed (%s), falling "
+                    "back to next channel",
+                    e,
+                )
         if result is None and enable_arxiv:
             arxiv_response = await arxiv_client.search(
                 query=query,
@@ -793,8 +855,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 year=year,
             )
             if arxiv_response.get("entries"):
+                arxiv_merged_response = {
+                    "total": arxiv_response.get("totalResults", 0),
+                    "entries": arxiv_response["entries"],
+                }
                 result = _core_response_to_merged(
-                    {"total": arxiv_response.get("totalResults", 0), "entries": arxiv_response["entries"]},
+                    arxiv_merged_response,
                     limit,
                 )
                 logger.info("search_papers: using arXiv results")
@@ -856,7 +922,12 @@ def main() -> None:
     from mcp.server.stdio import stdio_server
 
     logger.info("Starting Scholar Search MCP Server...")
-    logger.info("Search channels: CORE=%s, Semantic Scholar=%s, arXiv=%s", enable_core, enable_semantic_scholar, enable_arxiv)
+    logger.info(
+        "Search channels: CORE=%s, Semantic Scholar=%s, arXiv=%s",
+        enable_core,
+        enable_semantic_scholar,
+        enable_arxiv,
+    )
     if api_key:
         logger.info("Semantic Scholar API key detected")
     else:
@@ -864,7 +935,10 @@ def main() -> None:
     if core_api_key:
         logger.info("CORE API key set (search tries CORE first with higher limits)")
     else:
-        logger.info("No CORE API key; search still tries CORE first (subject to rate limits), then S2/arXiv")
+        logger.info(
+            "No CORE API key; search still tries CORE first (subject to rate "
+            "limits), then S2/arXiv"
+        )
 
     async def arun() -> None:
         async with stdio_server() as (read_stream, write_stream):

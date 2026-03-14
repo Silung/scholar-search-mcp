@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scholar-search-mcp"
 version = "0.1.2"
-description = "Model Context Protocol server for Semantic Scholar API"
+description = "Model Context Protocol server for Semantic Scholar, CORE, and arXiv paper search"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-keywords = ["mcp", "semantic-scholar", "academic", "papers", "research"]
+keywords = ["mcp", "semantic-scholar", "core", "arxiv", "academic", "papers", "research"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -21,19 +21,27 @@ classifiers = [
 ]
 
 dependencies = [
+    "defusedxml>=0.7.1",
     "mcp>=0.9.0",
     "httpx>=0.25.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "bandit>=1.8.0",
     "black>=23.0.0",
+    "mypy>=1.17.0",
+    "pre-commit>=4.2.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.12.0",
+    "types-defusedxml>=0.7.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/scholar-search-mcp"
-Repository = "https://github.com/yourusername/scholar-search-mcp"
-Issues = "https://github.com/yourusername/scholar-search-mcp/issues"
+Homepage = "https://github.com/joshuasundance-swca/scholar-search-mcp"
+Repository = "https://github.com/joshuasundance-swca/scholar-search-mcp"
+Issues = "https://github.com/joshuasundance-swca/scholar-search-mcp/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -42,3 +50,27 @@ include = ["scholar_search_mcp*"]
 [tool.black]
 line-length = 88
 target-version = ['py310']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["scholar_search_mcp", "tests"]
+check_untyped_defs = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]

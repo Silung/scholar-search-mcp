@@ -118,6 +118,34 @@ npm install -g @modelcontextprotocol/inspector
 mcp-inspector python -m scholar_search_mcp
 ```
 
+## Development
+
+Install the package with development extras:
+
+```bash
+pip install -e .[dev]
+```
+
+Run the local test suite:
+
+```bash
+pytest
+```
+
+Install and run the configured pre-commit hooks:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+The development extras now include `pytest`, `pytest-asyncio`, `ruff`, `mypy`,
+`bandit`, `black`, and `pre-commit`.
+
+## Guides
+
+- [Semantic Scholar API Guide](docs/semantic-scholar-api-guide.md) - practical guidance for respectful and effective Semantic Scholar API usage with async rate limiting, retries, and `.env`-based local development.
+
 ## License
 
 MIT
@@ -127,4 +155,3 @@ MIT
 - [CORE API v3 Documentation](https://api.core.ac.uk/docs/v3)
 - [Semantic Scholar API](https://api.semanticscholar.org/api-docs)
 - [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)
-
