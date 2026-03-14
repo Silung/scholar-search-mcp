@@ -18,6 +18,8 @@ from .constants import (
     DEFAULT_PAPER_FIELDS,
     MAX_429_RETRIES,
     OPENSEARCH_NS,
+    RECOMMENDATIONS_BASE_URL,
+    SEMANTIC_SCHOLAR_MIN_INTERVAL,
 )
 from .dispatch import dispatch_tool
 from .models import dump_jsonable
@@ -41,6 +43,8 @@ __all__ = [
     "DEFAULT_PAPER_FIELDS",
     "MAX_429_RETRIES",
     "OPENSEARCH_NS",
+    "RECOMMENDATIONS_BASE_URL",
+    "SEMANTIC_SCHOLAR_MIN_INTERVAL",
     "SemanticScholarClient",
     "CoreApiClient",
     "ArxivClient",

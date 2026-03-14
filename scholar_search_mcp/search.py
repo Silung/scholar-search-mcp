@@ -89,6 +89,12 @@ async def search_papers_with_fallback(
     core_client: Any,
     semantic_client: Any,
     arxiv_client: Any,
+    offset: Optional[int] = None,
+    publication_date_or_year: Optional[str] = None,
+    fields_of_study: Optional[str] = None,
+    publication_types: Optional[str] = None,
+    open_access_pdf: Optional[bool] = None,
+    min_citation_count: Optional[int] = None,
 ) -> dict[str, Any]:
     """Execute the CORE -> Semantic Scholar -> arXiv search fallback chain."""
     result: SearchResponse | None = None
@@ -122,6 +128,12 @@ async def search_papers_with_fallback(
                 fields=fields,
                 year=year,
                 venue=venue,
+                offset=offset,
+                publication_date_or_year=publication_date_or_year,
+                fields_of_study=fields_of_study,
+                publication_types=publication_types,
+                open_access_pdf=open_access_pdf,
+                min_citation_count=min_citation_count,
             )
             semantic_search = SemanticSearchResponse.model_validate(s2_response)
             if semantic_search.data:

@@ -57,6 +57,18 @@ class RecordingSemanticClient:
             {"total": 1, "offset": 0, "data": [{"paperId": "semantic-1"}]},
         )
 
+    async def search_papers_bulk(self, **kwargs) -> dict:
+        self.calls.append(("search_papers_bulk", kwargs))
+        return {"total": 1, "token": None, "data": [{"paperId": "bulk-1"}]}
+
+    async def search_papers_match(self, **kwargs) -> dict:
+        self.calls.append(("search_papers_match", kwargs))
+        return {"paperId": "match-1", "title": "Best match"}
+
+    async def paper_autocomplete(self, **kwargs) -> dict:
+        self.calls.append(("paper_autocomplete", kwargs))
+        return {"matches": [{"id": "ac-1", "title": "Autocomplete result"}]}
+
     async def get_paper_details(self, **kwargs) -> dict:
         self.calls.append(("get_paper_details", kwargs))
         return {"paperId": kwargs["paper_id"]}
@@ -69,6 +81,10 @@ class RecordingSemanticClient:
         self.calls.append(("get_paper_references", kwargs))
         return {"data": [{"paperId": kwargs["paper_id"]}]}
 
+    async def get_paper_authors(self, **kwargs) -> dict:
+        self.calls.append(("get_paper_authors", kwargs))
+        return {"total": 1, "offset": 0, "data": [{"authorId": "a-1"}]}
+
     async def get_author_info(self, **kwargs) -> dict:
         self.calls.append(("get_author_info", kwargs))
         return {"authorId": kwargs["author_id"]}
@@ -77,9 +93,25 @@ class RecordingSemanticClient:
         self.calls.append(("get_author_papers", kwargs))
         return {"data": [{"authorId": kwargs["author_id"]}]}
 
+    async def search_authors(self, **kwargs) -> dict:
+        self.calls.append(("search_authors", kwargs))
+        return {"total": 1, "offset": 0, "data": [{"authorId": "a-1"}]}
+
+    async def batch_get_authors(self, **kwargs) -> list[dict[str, str]]:
+        self.calls.append(("batch_get_authors", kwargs))
+        return [{"authorId": aid} for aid in kwargs["author_ids"]]
+
+    async def search_snippets(self, **kwargs) -> dict:
+        self.calls.append(("search_snippets", kwargs))
+        return {"data": [{"score": 0.9, "text": "snippet text"}]}
+
     async def get_recommendations(self, **kwargs) -> dict:
         self.calls.append(("get_recommendations", kwargs))
         return {"recommendedPapers": [{"paperId": kwargs["paper_id"]}]}
+
+    async def get_recommendations_post(self, **kwargs) -> dict:
+        self.calls.append(("get_recommendations_post", kwargs))
+        return {"recommendedPapers": [{"paperId": "rec-post-1"}]}
 
     async def batch_get_papers(self, **kwargs) -> list[dict[str, str]]:
         self.calls.append(("batch_get_papers", kwargs))
@@ -209,16 +241,24 @@ def test_core_result_to_paper_returns_none_without_required_fields() -> None:
 async def test_list_tools_returns_expected_public_contract() -> None:
     tools = await server.list_tools()
 
-    assert len(tools) == 8
+    assert len(tools) == 16
     tool_map = {tool.name: tool for tool in tools}
     assert set(tool_map) == {
         "search_papers",
+        "search_papers_bulk",
+        "search_papers_match",
+        "paper_autocomplete",
         "get_paper_details",
         "get_paper_citations",
         "get_paper_references",
+        "get_paper_authors",
         "get_author_info",
         "get_author_papers",
+        "search_authors",
+        "batch_get_authors",
+        "search_snippets",
         "get_paper_recommendations",
+        "get_paper_recommendations_post",
         "batch_get_papers",
     }
     assert tool_map["search_papers"].inputSchema["required"] == ["query"]
@@ -228,8 +268,17 @@ async def test_list_tools_returns_expected_public_contract() -> None:
         "fields",
         "year",
         "venue",
+        "offset",
+        "publicationDateOrYear",
+        "fieldsOfStudy",
+        "publicationTypes",
+        "openAccessPdf",
+        "minCitationCount",
     }
     assert tool_map["batch_get_papers"].inputSchema["required"] == ["paper_ids"]
+    assert tool_map["batch_get_authors"].inputSchema["required"] == ["author_ids"]
+    post_rec_schema = tool_map["get_paper_recommendations_post"].inputSchema
+    assert "positivePaperIds" in post_rec_schema["required"]
 
 
 @pytest.mark.asyncio
@@ -247,7 +296,7 @@ async def test_list_tools_returns_expected_public_contract() -> None:
             {"paper_id": "paper-2"},
             (
                 "get_paper_citations",
-                {"paper_id": "paper-2", "limit": 100, "fields": None},
+                {"paper_id": "paper-2", "limit": 100, "fields": None, "offset": None},
             ),
             {"data": [{"paperId": "paper-2"}]},
         ),
@@ -256,7 +305,12 @@ async def test_list_tools_returns_expected_public_contract() -> None:
             {"paper_id": "paper-3", "limit": 12, "fields": ["authors"]},
             (
                 "get_paper_references",
-                {"paper_id": "paper-3", "limit": 12, "fields": ["authors"]},
+                {
+                    "paper_id": "paper-3",
+                    "limit": 12,
+                    "fields": ["authors"],
+                    "offset": None,
+                },
             ),
             {"data": [{"paperId": "paper-3"}]},
         ),
@@ -271,7 +325,13 @@ async def test_list_tools_returns_expected_public_contract() -> None:
             {"author_id": "author-2", "limit": 25},
             (
                 "get_author_papers",
-                {"author_id": "author-2", "limit": 25, "fields": None},
+                {
+                    "author_id": "author-2",
+                    "limit": 25,
+                    "fields": None,
+                    "offset": None,
+                    "publication_date_or_year": None,
+                },
             ),
             {"data": [{"authorId": "author-2"}]},
         ),
@@ -344,6 +404,12 @@ async def test_search_papers_forwards_clamped_semantic_arguments(
                 "fields": ["title", "year"],
                 "year": "2022",
                 "venue": ["NeurIPS"],
+                "offset": None,
+                "publication_date_or_year": None,
+                "fields_of_study": None,
+                "publication_types": None,
+                "open_access_pdf": None,
+                "min_citation_count": None,
             },
         )
     ]
@@ -530,3 +596,210 @@ async def test_search_papers_falls_back_to_arxiv_when_other_sources_fail(
     assert payload["total"] == 1
     assert payload["data"][0]["paperId"] == "arxiv-1"
     assert payload["data"][0]["source"] == "arxiv"
+
+
+@pytest.mark.asyncio
+async def test_semantic_scholar_rate_limiter_paces_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared rate limiter must insert a sleep when requests arrive faster
+    than the configured minimum interval."""
+    responses = [
+        DummyResponse(status_code=200, payload={"data": [{"paperId": "r1"}]}),
+        DummyResponse(status_code=200, payload={"data": [{"paperId": "r2"}]}),
+    ]
+    dummy_client = DummyAsyncClient(responses)
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    call_count = 0
+
+    def fake_monotonic() -> float:
+        # Simulate two calls within 0.1 s of each other to trigger pacing.
+        # First call (inside _pace for request-1): now = 0.0 → no prior request,
+        # sets _last_request_time = 0.0.
+        # Second call (inside _pace for request-2): now = 0.0 → elapsed = 0.0
+        # → sleep needed.  Subsequent calls return a large value so _pace exits.
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            return 0.0
+        return 100.0
+
+    monkeypatch.setattr(server.httpx, "AsyncClient", lambda timeout: dummy_client)
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        "scholar_search_mcp.clients.semantic_scholar.client.time.monotonic",
+        fake_monotonic,
+    )
+
+    sc = server.SemanticScholarClient(api_key="test-key")
+    # First request – sets _last_request_time to 0.0; no sleep needed.
+    await sc._request("GET", "paper/search", params={"query": "a"})
+    # Second request – monotonic() still returns 0.0 so elapsed < MIN_INTERVAL.
+    await sc._request("GET", "paper/search", params={"query": "b"})
+
+    # At least one pacing sleep must have been issued.
+    assert any(s > 0 for s in sleep_calls)
+
+
+@pytest.mark.asyncio
+async def test_get_recommendations_uses_recommendations_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_recommendations must target the recommendations API, not the graph API."""
+    captured: list[str] = []
+
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    class CapturingAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, *, method, url, **kwargs):
+            captured.append(url)
+            return DummyResponse(
+                status_code=200,
+                payload={"recommendedPapers": [{"paperId": "rec-1"}]},
+            )
+
+    monkeypatch.setattr(
+        server.httpx,
+        "AsyncClient",
+        lambda timeout: CapturingAsyncClient(),
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    await sc.get_recommendations("paper-xyz")
+
+    assert len(captured) == 1
+    assert "recommendations" in captured[0]
+    assert "graph" not in captured[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "expected_method", "check_payload"),
+    [
+        (
+            "search_papers_bulk",
+            {"query": "neural networks", "limit": 50},
+            "search_papers_bulk",
+            lambda p: p["data"][0]["paperId"] == "bulk-1",
+        ),
+        (
+            "search_papers_match",
+            {"query": "attention is all you need"},
+            "search_papers_match",
+            lambda p: p["paperId"] == "match-1",
+        ),
+        (
+            "paper_autocomplete",
+            {"query": "transformer"},
+            "paper_autocomplete",
+            lambda p: "matches" in p,
+        ),
+        (
+            "get_paper_authors",
+            {"paper_id": "paper-5"},
+            "get_paper_authors",
+            lambda p: p["total"] == 1,
+        ),
+        (
+            "search_authors",
+            {"query": "Yoshua Bengio"},
+            "search_authors",
+            lambda p: p["total"] == 1,
+        ),
+        (
+            "batch_get_authors",
+            {"author_ids": ["a1", "a2"]},
+            "batch_get_authors",
+            lambda p: len(p) == 2,
+        ),
+        (
+            "search_snippets",
+            {"query": "deep learning"},
+            "search_snippets",
+            lambda p: len(p["data"]) == 1,
+        ),
+        (
+            "get_paper_recommendations_post",
+            {"positivePaperIds": ["p1", "p2"]},
+            "get_recommendations_post",
+            lambda p: p["recommendedPapers"][0]["paperId"] == "rec-post-1",
+        ),
+    ],
+)
+async def test_call_tool_routes_new_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+    arguments: dict,
+    expected_method: str,
+    check_payload,
+) -> None:
+    fake_client = RecordingSemanticClient()
+    monkeypatch.setattr(server, "client", fake_client)
+
+    payload = _payload(await server.call_tool(tool_name, arguments))
+
+    assert any(method == expected_method for method, _ in fake_client.calls), (
+        f"Expected {expected_method!r} to have been called; got {fake_client.calls}"
+    )
+    assert check_payload(payload)
+
+
+@pytest.mark.asyncio
+async def test_search_papers_bulk_passes_token_and_sort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = RecordingSemanticClient()
+    monkeypatch.setattr(server, "client", fake_client)
+
+    await server.call_tool(
+        "search_papers_bulk",
+        {"query": "language models", "token": "tok-abc", "sort": "citationCount"},
+    )
+
+    assert len(fake_client.calls) == 1
+    method, kwargs = fake_client.calls[0]
+    assert method == "search_papers_bulk"
+    assert kwargs["token"] == "tok-abc"
+    assert kwargs["sort"] == "citationCount"
+
+
+@pytest.mark.asyncio
+async def test_search_papers_exposes_new_filter_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = RecordingSemanticClient()
+    monkeypatch.setattr(server, "enable_core", False)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_arxiv", False)
+    monkeypatch.setattr(server, "client", fake_client)
+
+    await server.call_tool(
+        "search_papers",
+        {
+            "query": "ml",
+            "offset": 10,
+            "publicationDateOrYear": "2020:2023",
+            "fieldsOfStudy": "Computer Science",
+            "minCitationCount": 5,
+        },
+    )
+
+    assert len(fake_client.calls) == 1
+    method, kwargs = fake_client.calls[0]
+    assert method == "search_papers"
+    assert kwargs["offset"] == 10
+    assert kwargs["publication_date_or_year"] == "2020:2023"
+    assert kwargs["fields_of_study"] == "Computer Science"
+    assert kwargs["min_citation_count"] == 5

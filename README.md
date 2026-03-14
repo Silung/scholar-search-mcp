@@ -6,12 +6,17 @@ The package now uses Pydantic for tool inputs, settings, and normalized provider
 
 ## Features
 
-- **Search papers** – Keyword search with **fallback chain**: tries **CORE API** first (no key required; set `CORE_API_KEY` for higher limits), then **Semantic Scholar**, then **arXiv**; optional year and venue filters (venue applies to Semantic Scholar only)
+- **Search papers** – Keyword search with **fallback chain**: tries **CORE API** first (no key required; set `CORE_API_KEY` for higher limits), then **Semantic Scholar**, then **arXiv**; optional year, venue, and advanced filters (venue/fieldsOfStudy/publicationTypes/openAccessPdf/minCitationCount apply to Semantic Scholar only)
+- **Bulk paper search** – Boolean-syntax search via `/paper/search/bulk` with token-based pagination (up to 1,000 papers/call)
+- **Best-match / autocomplete** – Single best title match and typeahead completions
 - **Paper details** – Full metadata (title, authors, abstract, citations, etc.)
 - **Citations & references** – Papers that cite or are cited by a given paper
-- **Author info** – Author profile and paper list
+- **Paper authors** – Author listing for a specific paper with offset pagination
+- **Author search & batch** – Search authors by name, or fetch up to 1,000 author profiles in one call
+- **Snippet search** – Quote-like text snippet search returning snippet text, paper metadata, and score
 - **Batch lookup** – Fetch up to 500 papers in one call
-- **Recommendations** – Similar papers for a given paper
+- **Recommendations** – Similar papers via single-seed GET or multi-seed POST
+- **Shared rate limiter** – One 1 req/s pacing lock shared across all Semantic Scholar endpoints
 
 ## Installation
 
@@ -105,16 +110,24 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 ## Tools
 
 
-| Tool                        | Description                                                  |
-| --------------------------- | ------------------------------------------------------------ |
-| `search_papers`             | Search by query; optional `limit`, `fields`, `year`, `venue` |
-| `get_paper_details`         | Get one paper by ID (DOI, ArXiv ID, S2 ID, or URL)           |
-| `get_paper_citations`       | Papers that cite the given paper                             |
-| `get_paper_references`      | References of the given paper                                |
-| `get_author_info`           | Author profile by ID                                         |
-| `get_author_papers`         | Papers by author                                             |
-| `get_paper_recommendations` | Similar papers for a given paper                             |
-| `batch_get_papers`          | Details for up to 500 paper IDs                              |
+| Tool                             | Description                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `search_papers`                  | Search by query; optional `limit`, `fields`, `year`, `venue`, `offset`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount` |
+| `search_papers_bulk`             | Bulk paper search with advanced boolean query syntax and token-based pagination (up to 1,000 papers/call) |
+| `search_papers_match`            | Find the single paper whose title best matches the query string                                          |
+| `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |
+| `get_paper_details`              | Get one paper by ID (DOI, ArXiv ID, S2 ID, or URL)                                                      |
+| `get_paper_citations`            | Papers that cite the given paper; supports `offset` pagination                                           |
+| `get_paper_references`           | References of the given paper; supports `offset` pagination                                              |
+| `get_paper_authors`              | Authors of the given paper; supports `offset` pagination                                                 |
+| `get_author_info`                | Author profile by ID                                                                                     |
+| `get_author_papers`              | Papers by author; supports `offset` and `publicationDateOrYear`                                         |
+| `search_authors`                 | Search for authors by name; supports `offset` pagination                                                 |
+| `batch_get_authors`              | Details for up to 1,000 author IDs in one call                                                           |
+| `search_snippets`                | Search for matching text snippets across papers; returns snippet text, paper metadata, and score         |
+| `get_paper_recommendations`      | Similar papers for a given paper (GET single-seed)                                                       |
+| `get_paper_recommendations_post` | Similar papers from positive and negative seed sets (POST multi-seed)                                    |
+| `batch_get_papers`               | Details for up to 500 paper IDs                                                                          |
 
 
 ## Testing with MCP Inspector

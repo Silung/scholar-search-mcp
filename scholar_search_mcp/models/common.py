@@ -55,6 +55,14 @@ class SemanticSearchResponse(ApiModel):
     data: list[Paper] = Field(default_factory=list)
 
 
+class BulkSearchResponse(ApiModel):
+    """Semantic Scholar bulk search response (token-paginated)."""
+
+    total: int = 0
+    token: str | None = None
+    data: list[Paper] = Field(default_factory=list)
+
+
 class CoreSearchResponse(ApiModel):
     """CORE search response normalized to shared paper entries."""
 
@@ -81,10 +89,55 @@ class AuthorProfile(ApiModel):
     h_index: int | None = Field(default=None, alias="hIndex")
 
 
+class AuthorListResponse(ApiModel):
+    """Semantic Scholar offset-paginated author list response."""
+
+    total: int = 0
+    offset: int = 0
+    next: int | None = None
+    data: list[AuthorProfile] = Field(default_factory=list)
+
+
+class BatchAuthorResponse(RootModel[list[AuthorProfile]]):
+    """Semantic Scholar batch author lookup response."""
+
+
 class PaperListResponse(ApiModel):
     """Provider response containing a list of papers under `data`."""
 
     data: list[Paper] = Field(default_factory=list)
+
+
+class PaperAuthorListResponse(ApiModel):
+    """Offset-paginated author list for a specific paper."""
+
+    total: int = 0
+    offset: int = 0
+    next: int | None = None
+    data: list[AuthorProfile] = Field(default_factory=list)
+
+
+class SnippetPaper(ApiModel):
+    """Minimal paper info embedded in a snippet search result."""
+
+    paper_id: str | None = Field(default=None, alias="paperId")
+    title: str | None = None
+    year: int | None = None
+    url: str | None = None
+
+
+class SnippetResult(ApiModel):
+    """One result from `/snippet/search`."""
+
+    score: float | None = None
+    text: str | None = None
+    paper: SnippetPaper | None = None
+
+
+class SnippetSearchResponse(ApiModel):
+    """Response from `/snippet/search`."""
+
+    data: list[SnippetResult] = Field(default_factory=list)
 
 
 class RecommendationResponse(ApiModel):
