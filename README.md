@@ -28,6 +28,8 @@ Edit the config file:
 
 Add:
 
+Set notes outside the JSON block so the example remains valid JSON. In the sample below, CORE is disabled and Semantic Scholar plus arXiv are enabled.
+
 ```json
 {
   "mcpServers": {
@@ -35,9 +37,9 @@ Add:
       "command": "python",
       "args": ["-m", "scholar_search_mcp"],
       "env": {
-        "SCHOLAR_SEARCH_ENABLE_CORE": "false", // enable https://core.ac.uk/
-        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true", // enable https://www.semanticscholar.org/
-        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true" // enable https://arxiv.org/
+        "SCHOLAR_SEARCH_ENABLE_CORE": "false",
+        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
+        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
       }
     }
   }
@@ -45,6 +47,8 @@ Add:
 ```
 
 If you have API keys (optional but recommended for search):
+
+The next example is also valid JSON. It enables all three search providers and supplies API keys for the services that support them.
 
 ```json
 {
@@ -55,9 +59,9 @@ If you have API keys (optional but recommended for search):
       "env": {
         "CORE_API_KEY": "your-core-api-key-here",
         "SEMANTIC_SCHOLAR_API_KEY": "your-semantic-scholar-api-key-here",
-        "SCHOLAR_SEARCH_ENABLE_CORE": "true", // enable https://core.ac.uk/
-        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true", // enable https://www.semanticscholar.org/
-        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true" // enable https://arxiv.org/
+        "SCHOLAR_SEARCH_ENABLE_CORE": "true",
+        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
+        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
       }
     }
   }
@@ -144,6 +148,7 @@ The development extras now include `pytest`, `pytest-asyncio`, `ruff`, `mypy`,
 
 ## Guides
 
+- [Agent Handoff](docs/agent-handoff.md) - current repo status, validation commands, and next recommended work for follow-on agents.
 - [Semantic Scholar API Guide](docs/semantic-scholar-api-guide.md) - practical guidance for respectful and effective Semantic Scholar API usage with async rate limiting, retries, and `.env`-based local development.
 
 ## License

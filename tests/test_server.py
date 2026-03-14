@@ -78,6 +78,85 @@ def test_core_response_to_merged_preserves_total_and_limit() -> None:
     }
 
 
+def test_core_result_to_paper_prefers_doi_url_and_normalizes_metadata() -> None:
+    paper = server.CoreApiClient()._result_to_paper(
+        {
+            "id": 42,
+            "doi": "10.1000/example-doi",
+            "title": "Example paper",
+            "abstract": "Example abstract",
+            "publishedDate": "2023-05-01",
+            "authors": [{"name": "Author One"}, "Author Two"],
+            "journals": [{"title": "Journal A"}, {"title": "Journal B"}],
+            "documentType": ["article"],
+            "downloadUrl": "https://downloads.example/paper.pdf",
+            "citationCount": 7,
+        }
+    )
+
+    assert paper == {
+        "paperId": "42",
+        "title": "Example paper",
+        "abstract": "Example abstract",
+        "year": 2023,
+        "authors": [{"name": "Author One"}, {"name": "Author Two"}],
+        "citationCount": 7,
+        "referenceCount": None,
+        "influentialCitationCount": None,
+        "venue": "Journal A, Journal B",
+        "publicationTypes": ["article"],
+        "publicationDate": "2023-05-01",
+        "url": "https://doi.org/10.1000/example-doi",
+        "pdfUrl": "https://downloads.example/paper.pdf",
+        "source": "core",
+    }
+
+
+def test_core_result_to_paper_uses_nested_download_url_variants() -> None:
+    paper = server.CoreApiClient()._result_to_paper(
+        {
+            "id": "core-1",
+            "title": "Nested download url",
+            "downloadUrl": {"urls": [{"link": "https://downloads.example/from-urls.pdf"}]},
+            "authors": [{"name": "Author One"}, {"orcid": "missing-name"}],
+        }
+    )
+
+    assert paper is not None
+    assert paper["url"] == "https://downloads.example/from-urls.pdf"
+    assert paper["pdfUrl"] is None
+    assert paper["authors"] == [{"name": "Author One"}]
+    assert paper["paperId"] == "core-1"
+
+
+def test_core_result_to_paper_uses_source_fulltext_url_variants() -> None:
+    paper = server.CoreApiClient()._result_to_paper(
+        {
+            "id": "core-2",
+            "title": "Source fulltext url",
+            "sourceFulltextUrls": {"urls": ["https://fulltext.example/paper"]},
+            "downloadUrl": {"url": "https://downloads.example/paper.pdf"},
+            "depositedDate": "2022-03-02",
+        }
+    )
+
+    assert paper is not None
+    assert paper["url"] == "https://downloads.example/paper.pdf"
+    assert paper["pdfUrl"] == "https://downloads.example/paper.pdf"
+    assert paper["publicationDate"] == "2022-03-02"
+    assert paper["year"] == 2022
+
+
+def test_core_result_to_paper_returns_none_without_required_fields() -> None:
+    client = server.CoreApiClient()
+
+    assert (
+        client._result_to_paper({"id": "core-3", "downloadUrl": "https://x"})
+        is None
+    )
+    assert client._result_to_paper({"title": "Missing url"}) is None
+
+
 def test_merge_search_results_deduplicates_arxiv_entries() -> None:
     merged = server._merge_search_results(
         {
