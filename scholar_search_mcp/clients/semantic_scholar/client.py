@@ -3,13 +3,22 @@
 import logging
 from typing import Any, Optional
 
-from ..constants import (
+from ...constants import (
     API_BASE_URL,
     DEFAULT_AUTHOR_FIELDS,
     DEFAULT_PAPER_FIELDS,
     MAX_429_RETRIES,
 )
-from ..transport import asyncio, httpx
+from ...models import (
+    AuthorProfile,
+    BatchPaperResponse,
+    Paper,
+    PaperListResponse,
+    RecommendationResponse,
+    SemanticSearchResponse,
+    dump_jsonable,
+)
+from ...transport import asyncio, httpx
 
 logger = logging.getLogger("scholar-search-mcp")
 
@@ -27,11 +36,11 @@ class SemanticScholarClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[dict] = None,
-        json_data: Optional[dict] = None,
+        params: Optional[dict[str, Any]] = None,
+        json_data: Optional[dict[str, Any]] = None,
         max_retries: int = 4,
         base_delay: float = 1.0,
-    ) -> dict[str, Any]:
+    ) -> Any:
         """Send HTTP request with exponential backoff on 429."""
         url = f"{API_BASE_URL}/{endpoint}"
         total_attempts = max(max_retries, MAX_429_RETRIES) + 1
@@ -86,7 +95,8 @@ class SemanticScholarClient:
             params["year"] = year
         if venue:
             params["venue"] = ",".join(venue)
-        return await self._request("GET", "paper/search", params=params)
+        response = await self._request("GET", "paper/search", params=params)
+        return dump_jsonable(SemanticSearchResponse.model_validate(response))
 
     async def get_paper_details(
         self,
@@ -95,7 +105,8 @@ class SemanticScholarClient:
     ) -> dict[str, Any]:
         """Get paper details."""
         params = {"fields": ",".join(fields or DEFAULT_PAPER_FIELDS)}
-        return await self._request("GET", f"paper/{paper_id}", params=params)
+        response = await self._request("GET", f"paper/{paper_id}", params=params)
+        return dump_jsonable(Paper.model_validate(response))
 
     async def get_paper_citations(
         self,
@@ -108,7 +119,8 @@ class SemanticScholarClient:
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        return await self._request("GET", f"paper/{paper_id}/citations", params=params)
+        response = await self._request("GET", f"paper/{paper_id}/citations", params=params)
+        return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def get_paper_references(
         self,
@@ -121,7 +133,8 @@ class SemanticScholarClient:
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        return await self._request("GET", f"paper/{paper_id}/references", params=params)
+        response = await self._request("GET", f"paper/{paper_id}/references", params=params)
+        return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def get_author_info(
         self,
@@ -130,7 +143,8 @@ class SemanticScholarClient:
     ) -> dict[str, Any]:
         """Get author info."""
         params = {"fields": ",".join(fields or DEFAULT_AUTHOR_FIELDS)}
-        return await self._request("GET", f"author/{author_id}", params=params)
+        response = await self._request("GET", f"author/{author_id}", params=params)
+        return dump_jsonable(AuthorProfile.model_validate(response))
 
     async def get_author_papers(
         self,
@@ -143,7 +157,8 @@ class SemanticScholarClient:
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        return await self._request("GET", f"author/{author_id}/papers", params=params)
+        response = await self._request("GET", f"author/{author_id}/papers", params=params)
+        return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def get_recommendations(
         self,
@@ -156,23 +171,25 @@ class SemanticScholarClient:
             "limit": min(limit, 100),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        return await self._request(
+        response = await self._request(
             "GET",
             f"recommendations/v1/papers/forpaper/{paper_id}",
             params=params,
         )
+        return dump_jsonable(RecommendationResponse.model_validate(response))
 
     async def batch_get_papers(
         self,
         paper_ids: list[str],
         fields: Optional[list[str]] = None,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         """Batch get papers (up to 500)."""
         json_data = {"ids": paper_ids[:500]}
         params = {"fields": ",".join(fields or DEFAULT_PAPER_FIELDS)}
-        return await self._request(
+        response = await self._request(
             "POST",
             "paper/batch",
             params=params,
             json_data=json_data,
         )
+        return dump_jsonable(BatchPaperResponse.model_validate(response))

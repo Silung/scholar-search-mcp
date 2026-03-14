@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from typing import Any
 
 from mcp.server import Server
@@ -21,10 +20,11 @@ from .constants import (
     OPENSEARCH_NS,
 )
 from .dispatch import dispatch_tool
+from .models import dump_jsonable
 from .parsing import _arxiv_id_from_url, _text
 from .runtime import run_server
 from .search import _core_response_to_merged, _merge_search_results
-from .settings import _env_bool
+from .settings import AppSettings, _env_bool
 from .tools import get_tool_definitions
 from .transport import asyncio, httpx
 
@@ -67,11 +67,12 @@ __all__ = [
 
 
 app = Server("scholar-search")
-api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
-core_api_key = os.environ.get("CORE_API_KEY")
-enable_core = _env_bool("SCHOLAR_SEARCH_ENABLE_CORE", True)
-enable_semantic_scholar = _env_bool("SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR", True)
-enable_arxiv = _env_bool("SCHOLAR_SEARCH_ENABLE_ARXIV", True)
+settings = AppSettings.from_env()
+api_key = settings.semantic_scholar_api_key
+core_api_key = settings.core_api_key
+enable_core = settings.enable_core
+enable_semantic_scholar = settings.enable_semantic_scholar
+enable_arxiv = settings.enable_arxiv
 client = SemanticScholarClient(api_key=api_key)
 core_client = CoreApiClient(api_key=core_api_key)
 arxiv_client = ArxivClient()
@@ -100,7 +101,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     return [
         TextContent(
             type="text",
-            text=json.dumps(result, ensure_ascii=False, indent=2),
+            text=json.dumps(dump_jsonable(result), ensure_ascii=False, indent=2),
         )
     ]
 

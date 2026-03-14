@@ -6,9 +6,10 @@ from urllib.parse import quote_plus
 
 from defusedxml import ElementTree as ET
 
-from ..constants import ARXIV_API_BASE, ARXIV_NS, ATOM_NS, OPENSEARCH_NS
-from ..parsing import _arxiv_id_from_url, _text
-from ..transport import httpx
+from ...constants import ARXIV_API_BASE, ARXIV_NS, ATOM_NS, OPENSEARCH_NS
+from ...models import ArxivSearchResponse, Author, Paper, dump_jsonable
+from ...parsing import _arxiv_id_from_url, _text
+from ...transport import httpx
 
 logger = logging.getLogger("scholar-search-mcp")
 
@@ -67,13 +68,13 @@ class ArxivClient:
                 response.raise_for_status()
         except Exception as exc:
             logger.warning("arXiv search failed: %s", exc)
-            return {"totalResults": 0, "entries": []}
+            return dump_jsonable(ArxivSearchResponse())
 
         root = ET.fromstring(response.text)
         total_el = root.find(f"{{{OPENSEARCH_NS}}}totalResults")
         total_results = int(_text(total_el)) if total_el is not None else 0
 
-        entries: list[dict[str, Any]] = []
+        entries: list[Paper] = []
         for entry in root.findall(f"{{{ATOM_NS}}}entry"):
             summary_el = entry.find(f"{{{ATOM_NS}}}summary")
             title_text = _text(entry.find(f"{{{ATOM_NS}}}title")).lower()
@@ -81,8 +82,10 @@ class ArxivClient:
                 continue
             paper = self._entry_to_paper(entry)
             if paper:
-                entries.append(paper)
-        return {"totalResults": total_results, "entries": entries}
+                entries.append(Paper.model_validate(paper))
+        return dump_jsonable(
+            ArxivSearchResponse(totalResults=total_results, entries=entries)
+        )
 
     def _entry_to_paper(self, entry: Any) -> Optional[dict[str, Any]]:
         """Convert one Atom entry to an S2-compatible paper dict."""
@@ -112,12 +115,12 @@ class ArxivClient:
             except ValueError:
                 pass
 
-        authors: list[dict[str, Any]] = []
+        authors = []
         for author in entry.findall(f"{{{ATOM_NS}}}author"):
             name_el = author.find(f"{{{ATOM_NS}}}name")
             name = _text(name_el) if name_el is not None else ""
             if name:
-                authors.append({"name": name})
+                authors.append(Author(name=name))
 
         link_alternate = None
         link_pdf = None
@@ -133,19 +136,21 @@ class ArxivClient:
         primary_cat = entry.find(f"{{{ARXIV_NS}}}primary_category")
         venue = primary_cat.get("term") if primary_cat is not None else None
 
-        return {
-            "paperId": arxiv_id,
-            "title": title,
-            "abstract": abstract or None,
-            "year": year_val,
-            "authors": authors,
-            "citationCount": None,
-            "referenceCount": None,
-            "influentialCitationCount": None,
-            "venue": venue,
-            "publicationTypes": None,
-            "publicationDate": date_str or None,
-            "url": link_alternate or f"https://arxiv.org/abs/{arxiv_id}",
-            "pdfUrl": link_pdf,
-            "source": "arxiv",
-        }
+        return dump_jsonable(
+            Paper(
+                paperId=arxiv_id,
+                title=title,
+                abstract=abstract or None,
+                year=year_val,
+                authors=authors,
+                citationCount=None,
+                referenceCount=None,
+                influentialCitationCount=None,
+                venue=venue,
+                publicationTypes=None,
+                publicationDate=date_str or None,
+                url=link_alternate or f"https://arxiv.org/abs/{arxiv_id}",
+                pdfUrl=link_pdf,
+                source="arxiv",
+            )
+        )

@@ -3,7 +3,25 @@
 import logging
 from typing import Any, Optional
 
+from .models import (
+    ArxivSearchResponse,
+    CoreSearchResponse,
+    SearchResponse,
+    SemanticSearchResponse,
+)
+
 logger = logging.getLogger("scholar-search-mcp")
+
+
+def _dump_search_response(response: SearchResponse) -> dict[str, Any]:
+    return {
+        "total": response.total,
+        "offset": response.offset,
+        "data": [
+            paper.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
+            for paper in response.data
+        ],
+    }
 
 
 def _merge_search_results(
@@ -12,43 +30,50 @@ def _merge_search_results(
     limit: int,
 ) -> dict[str, Any]:
     """Merge Semantic Scholar and arXiv results into the shared response shape."""
-    s2_data = list(s2_response.get("data") or [])
-    arxiv_entries = list(arxiv_response.get("entries") or [])
-    for paper in s2_data:
-        paper.setdefault("source", "semantic_scholar")
+    semantic_search = SemanticSearchResponse.model_validate(s2_response)
+    arxiv_search = ArxivSearchResponse.model_validate(arxiv_response)
+
+    s2_data = [
+        paper.model_copy(update={"source": paper.source or "semantic_scholar"})
+        for paper in semantic_search.data
+    ]
+    arxiv_entries = list(arxiv_search.entries)
 
     seen_arxiv_ids = set()
     for paper in s2_data:
-        external_ids = paper.get("externalIds") or {}
+        external_ids = (paper.model_extra or {}).get("externalIds") or {}
         arxiv_id = external_ids.get("ArXiv")
         if arxiv_id:
             seen_arxiv_ids.add(str(arxiv_id))
 
     merged = list(s2_data)
     for paper in arxiv_entries:
-        arxiv_id = paper.get("paperId") or ""
+        arxiv_id = paper.paper_id or ""
         if arxiv_id and arxiv_id not in seen_arxiv_ids:
             seen_arxiv_ids.add(arxiv_id)
             merged.append(paper)
 
-    merged = merged[:limit]
-    return {
-        "total": len(merged),
-        "offset": s2_response.get("offset", 0),
-        "data": merged,
-    }
+    return _dump_search_response(
+        SearchResponse(
+            total=len(merged[:limit]),
+            offset=semantic_search.offset,
+            data=merged[:limit],
+        )
+    )
 
 
 def _core_response_to_merged(
     core_response: dict[str, Any], limit: int
 ) -> dict[str, Any]:
     """Convert CORE search response to unified shape (total, offset, data)."""
-    entries = list(core_response.get("entries") or [])
-    return {
-        "total": core_response.get("total", len(entries)),
-        "offset": 0,
-        "data": entries[:limit],
-    }
+    core_search = CoreSearchResponse.model_validate(core_response)
+    return _dump_search_response(
+        SearchResponse(
+            total=core_search.total or len(core_search.entries),
+            offset=0,
+            data=core_search.entries[:limit],
+        )
+    )
 
 
 async def search_papers_with_fallback(
@@ -66,7 +91,7 @@ async def search_papers_with_fallback(
     arxiv_client: Any,
 ) -> dict[str, Any]:
     """Execute the CORE -> Semantic Scholar -> arXiv search fallback chain."""
-    result = None
+    result: SearchResponse | None = None
     if enable_core:
         try:
             core_response = await core_client.search(
@@ -75,8 +100,13 @@ async def search_papers_with_fallback(
                 start=0,
                 year=year,
             )
-            if core_response.get("entries"):
-                result = _core_response_to_merged(core_response, limit)
+            core_search = CoreSearchResponse.model_validate(core_response)
+            if core_search.entries:
+                result = SearchResponse(
+                    total=core_search.total or len(core_search.entries),
+                    offset=0,
+                    data=core_search.entries[:limit],
+                )
                 logger.info("search_papers: using CORE API results")
         except Exception as exc:
             logger.info(
@@ -93,15 +123,18 @@ async def search_papers_with_fallback(
                 year=year,
                 venue=venue,
             )
-            if s2_response.get("data"):
-                response_data = s2_response.get("data") or []
-                result = {
-                    "total": s2_response.get("total", len(response_data)),
-                    "offset": s2_response.get("offset", 0),
-                    "data": response_data[:limit],
-                }
-                for paper in result["data"]:
-                    paper.setdefault("source", "semantic_scholar")
+            semantic_search = SemanticSearchResponse.model_validate(s2_response)
+            if semantic_search.data:
+                result = SearchResponse(
+                    total=semantic_search.total or len(semantic_search.data),
+                    offset=semantic_search.offset,
+                    data=[
+                        paper.model_copy(
+                            update={"source": paper.source or "semantic_scholar"}
+                        )
+                        for paper in semantic_search.data[:limit]
+                    ],
+                )
                 logger.info("search_papers: using Semantic Scholar results")
         except Exception as exc:
             logger.info(
@@ -116,14 +149,15 @@ async def search_papers_with_fallback(
             limit=limit,
             year=year,
         )
-        if arxiv_response.get("entries"):
-            arxiv_merged_response = {
-                "total": arxiv_response.get("totalResults", 0),
-                "entries": arxiv_response["entries"],
-            }
-            result = _core_response_to_merged(arxiv_merged_response, limit)
+        arxiv_search = ArxivSearchResponse.model_validate(arxiv_response)
+        if arxiv_search.entries:
+            result = SearchResponse(
+                total=arxiv_search.total_results,
+                offset=0,
+                data=arxiv_search.entries[:limit],
+            )
             logger.info("search_papers: using arXiv results")
 
     if result is None:
-        return {"total": 0, "offset": 0, "data": []}
-    return result
+        return _dump_search_response(SearchResponse())
+    return _dump_search_response(result)

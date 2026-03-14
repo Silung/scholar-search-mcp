@@ -1,7 +1,9 @@
 """Dispatch helpers for MCP tool routing."""
 
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
+from .models import TOOL_INPUT_MODELS, dump_jsonable
+from .models.tools import SearchPapersArgs
 from .search import search_papers_with_fallback
 
 ToolArgBuilder = Callable[[dict[str, Any]], dict[str, Any]]
@@ -77,13 +79,16 @@ async def dispatch_tool(
 ) -> dict[str, Any]:
     """Dispatch one MCP tool call to the correct backend implementation."""
     if name == "search_papers":
-        limit = min(max(1, arguments.get("limit", 10)), 100)
+        validated_arguments = cast(
+            SearchPapersArgs,
+            TOOL_INPUT_MODELS[name].model_validate(arguments),
+        )
         return await search_papers_with_fallback(
-            query=arguments["query"],
-            limit=limit,
-            year=arguments.get("year"),
-            fields=arguments.get("fields"),
-            venue=arguments.get("venue"),
+            query=validated_arguments.query,
+            limit=validated_arguments.limit,
+            year=validated_arguments.year,
+            fields=validated_arguments.fields,
+            venue=validated_arguments.venue,
             enable_core=enable_core,
             enable_semantic_scholar=enable_semantic_scholar,
             enable_arxiv=enable_arxiv,
@@ -97,5 +102,7 @@ async def dispatch_tool(
     except KeyError as exc:
         raise ValueError(f"Unknown tool: {name}") from exc
 
+    validated_payload = TOOL_INPUT_MODELS[name].model_validate(arguments)
     method = getattr(client, method_name)
-    return await method(**build_args(arguments))
+    result = await method(**build_args(validated_payload.model_dump()))
+    return dump_jsonable(result)

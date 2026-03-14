@@ -3,8 +3,9 @@
 import logging
 from typing import Any, Optional
 
-from ..constants import CORE_API_BASE
-from ..transport import httpx
+from ...constants import CORE_API_BASE
+from ...models import Author, CoreSearchResponse, Paper, dump_jsonable
+from ...transport import httpx
 
 logger = logging.getLogger("scholar-search-mcp")
 
@@ -64,11 +65,11 @@ class CoreApiClient:
 
         data = response.json()
         results = data.get("results") or []
-        entries: list[dict[str, Any]] = []
+        entries: list[Paper] = []
         for result in results:
             paper = self._result_to_paper(result)
             if paper:
-                entries.append(paper)
+                entries.append(Paper.model_validate(paper))
         if results and len(entries) < len(results):
             logger.debug(
                 "CORE returned %s results, %s had valid url/title "
@@ -76,7 +77,9 @@ class CoreApiClient:
                 len(results),
                 len(entries),
             )
-        return {"total": data.get("total_hits", len(entries)), "entries": entries}
+        return dump_jsonable(
+            CoreSearchResponse(total=data.get("total_hits", len(entries)), entries=entries)
+        )
 
     def _result_to_paper(self, result: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Convert one CORE result to an S2-compatible paper dict."""
@@ -143,7 +146,7 @@ class CoreApiClient:
                 year_val = getattr(raw_date, "year", None)
                 date_str = str(raw_date)
 
-        authors: list[dict[str, Any]] = []
+        authors: list[Author] = []
         for author in result.get("authors") or []:
             if isinstance(author, dict):
                 name = author.get("name")
@@ -152,7 +155,7 @@ class CoreApiClient:
             else:
                 name = None
             if name:
-                authors.append({"name": name})
+                authors.append(Author(name=name))
 
         pdf_url = result.get("downloadUrl")
         if isinstance(pdf_url, dict):
@@ -170,20 +173,22 @@ class CoreApiClient:
             if isinstance(journal, dict) and journal.get("title")
         )
 
-        return {
-            "paperId": str(result.get("id", result.get("doi", ""))),
-            "title": title,
-            "abstract": (result.get("abstract") or result.get("fullText") or "")[:5000]
-            or None,
-            "year": year_val,
-            "authors": authors,
-            "citationCount": result.get("citationCount"),
-            "referenceCount": None,
-            "influentialCitationCount": None,
-            "venue": venue or None,
-            "publicationTypes": result.get("documentType"),
-            "publicationDate": date_str,
-            "url": url,
-            "pdfUrl": pdf_url,
-            "source": "core",
-        }
+        return dump_jsonable(
+            Paper(
+                paperId=str(result.get("id", result.get("doi", ""))),
+                title=title,
+                abstract=(result.get("abstract") or result.get("fullText") or "")[:5000]
+                or None,
+                year=year_val,
+                authors=authors,
+                citationCount=result.get("citationCount"),
+                referenceCount=None,
+                influentialCitationCount=None,
+                venue=venue or None,
+                publicationTypes=result.get("documentType"),
+                publicationDate=date_str,
+                url=url,
+                pdfUrl=pdf_url,
+                source="core",
+            )
+        )
