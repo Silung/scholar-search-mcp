@@ -119,7 +119,11 @@ class SemanticScholarClient:
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        response = await self._request("GET", f"paper/{paper_id}/citations", params=params)
+        response = await self._request(
+            "GET",
+            f"paper/{paper_id}/citations",
+            params=params,
+        )
         return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def get_paper_references(
@@ -133,7 +137,11 @@ class SemanticScholarClient:
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        response = await self._request("GET", f"paper/{paper_id}/references", params=params)
+        response = await self._request(
+            "GET",
+            f"paper/{paper_id}/references",
+            params=params,
+        )
         return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def get_author_info(
@@ -157,7 +165,11 @@ class SemanticScholarClient:
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        response = await self._request("GET", f"author/{author_id}/papers", params=params)
+        response = await self._request(
+            "GET",
+            f"author/{author_id}/papers",
+            params=params,
+        )
         return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def get_recommendations(

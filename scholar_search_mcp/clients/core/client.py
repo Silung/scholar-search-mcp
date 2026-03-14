@@ -78,7 +78,10 @@ class CoreApiClient:
                 len(entries),
             )
         return dump_jsonable(
-            CoreSearchResponse(total=data.get("total_hits", len(entries)), entries=entries)
+              CoreSearchResponse(
+                 total=data.get("total_hits", len(entries)),
+                 entries=entries,
+              )
         )
 
     def _result_to_paper(self, result: dict[str, Any]) -> Optional[dict[str, Any]]:
