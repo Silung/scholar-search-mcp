@@ -1,5 +1,7 @@
 """Typed tool argument models and schema registry."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -23,7 +25,41 @@ def _clamp_limit(value: int | None, default: int, maximum: int) -> int:
     return min(max(int(value), 1), maximum)
 
 
-class SearchPapersArgs(ToolArgsModel):
+SearchProvider = Literal[
+    "core",
+    "semantic_scholar",
+    "serpapi_google_scholar",
+    "arxiv",
+]
+
+DEFAULT_SEARCH_PROVIDER_ORDER: tuple[SearchProvider, ...] = (
+    "core",
+    "semantic_scholar",
+    "serpapi_google_scholar",
+    "arxiv",
+)
+
+
+def _validate_provider_order(
+    value: list[SearchProvider] | None,
+) -> list[SearchProvider] | None:
+    if value is None:
+        return None
+    if not value:
+        raise ValueError("Provider order must contain at least one provider")
+    seen: set[SearchProvider] = set()
+    duplicates: list[SearchProvider] = []
+    for provider in value:
+        if provider in seen:
+            duplicates.append(provider)
+        seen.add(provider)
+    if duplicates:
+        duplicate_text = ", ".join(duplicates)
+        raise ValueError(f"Provider order cannot repeat providers: {duplicate_text}")
+    return value
+
+
+class SearchPapersBaseArgs(ToolArgsModel):
     query: str = Field(description="Search query")
     limit: int = Field(default=10, description="Max results (default 10, max 100)")
     fields: list[str] | None = Field(default=None, description="Fields to return")
@@ -67,6 +103,37 @@ class SearchPapersArgs(ToolArgsModel):
     @classmethod
     def clamp_limit(cls, value: int | None) -> int:
         return _clamp_limit(value, 10, 100)
+
+
+class SearchPapersArgs(SearchPapersBaseArgs):
+    preferred_provider: SearchProvider | None = Field(
+        default=None,
+        alias="preferredProvider",
+        description=(
+            "Optional provider to try first before continuing the broker fallback "
+            "chain. One of: core, semantic_scholar, serpapi_google_scholar, arxiv."
+        ),
+    )
+    provider_order: list[SearchProvider] | None = Field(
+        default=None,
+        alias="providerOrder",
+        description=(
+            "Optional ordered provider chain override for this call. Defaults to "
+            "core, semantic_scholar, serpapi_google_scholar, arxiv. Omit providers "
+            "to skip them for this request."
+        ),
+    )
+
+    @field_validator("provider_order")
+    @classmethod
+    def validate_provider_order(
+        cls, value: list[SearchProvider] | None
+    ) -> list[SearchProvider] | None:
+        return _validate_provider_order(value)
+
+
+class ProviderSearchPapersArgs(SearchPapersBaseArgs):
+    """Shared provider-specific single-source paper search arguments."""
 
 
 class BulkSearchPapersArgs(ToolArgsModel):
@@ -338,6 +405,10 @@ class GetCitationFormatsArgs(ToolArgsModel):
 
 TOOL_INPUT_MODELS: dict[str, type[ToolArgsModel]] = {
     "search_papers": SearchPapersArgs,
+    "search_papers_core": ProviderSearchPapersArgs,
+    "search_papers_semantic_scholar": ProviderSearchPapersArgs,
+    "search_papers_serpapi": ProviderSearchPapersArgs,
+    "search_papers_arxiv": ProviderSearchPapersArgs,
     "search_papers_bulk": BulkSearchPapersArgs,
     "search_papers_match": PaperMatchArgs,
     "paper_autocomplete": PaperAutocompleteArgs,

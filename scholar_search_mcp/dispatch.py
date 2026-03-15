@@ -5,7 +5,12 @@ from typing import Any, Callable, cast
 from .clients.serpapi import SerpApiKeyMissingError
 from .models import TOOL_INPUT_MODELS, CitationFormatsResponse, dump_jsonable
 from .models.common import CitationFormat, ExportLink
-from .models.tools import GetCitationFormatsArgs, SearchPapersArgs
+from .models.tools import (
+    GetCitationFormatsArgs,
+    SearchPapersArgs,
+    SearchPapersBaseArgs,
+    SearchProvider,
+)
 from .search import search_papers_with_fallback
 from .utils.cursor import (
     OFFSET_TOOLS,
@@ -288,6 +293,13 @@ NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
     ),
 }
 
+PROVIDER_SEARCH_TOOLS: dict[str, SearchProvider] = {
+    "search_papers_core": "core",
+    "search_papers_semantic_scholar": "semantic_scholar",
+    "search_papers_serpapi": "serpapi_google_scholar",
+    "search_papers_arxiv": "arxiv",
+}
+
 
 async def dispatch_tool(
     name: str,
@@ -301,6 +313,7 @@ async def dispatch_tool(
     enable_arxiv: bool,
     serpapi_client: Any = None,
     enable_serpapi: bool = False,
+    provider_order: list[SearchProvider] | None = None,
 ) -> dict[str, Any]:
     """Dispatch one MCP tool call to the correct backend implementation."""
     if name == "search_papers":
@@ -323,6 +336,35 @@ async def dispatch_tool(
             enable_semantic_scholar=enable_semantic_scholar,
             enable_arxiv=enable_arxiv,
             enable_serpapi=enable_serpapi,
+            preferred_provider=validated_arguments.preferred_provider,
+            provider_order=validated_arguments.provider_order or provider_order,
+            core_client=core_client,
+            semantic_client=client,
+            arxiv_client=arxiv_client,
+            serpapi_client=serpapi_client,
+        )
+
+    if name in PROVIDER_SEARCH_TOOLS:
+        provider_arguments = cast(
+            SearchPapersBaseArgs,
+            TOOL_INPUT_MODELS[name].model_validate(arguments),
+        )
+        return await search_papers_with_fallback(
+            query=provider_arguments.query,
+            limit=provider_arguments.limit,
+            year=provider_arguments.year,
+            fields=provider_arguments.fields,
+            venue=provider_arguments.venue,
+            publication_date_or_year=provider_arguments.publication_date_or_year,
+            fields_of_study=provider_arguments.fields_of_study,
+            publication_types=provider_arguments.publication_types,
+            open_access_pdf=provider_arguments.open_access_pdf,
+            min_citation_count=provider_arguments.min_citation_count,
+            enable_core=enable_core,
+            enable_semantic_scholar=enable_semantic_scholar,
+            enable_arxiv=enable_arxiv,
+            enable_serpapi=enable_serpapi,
+            provider_order=[PROVIDER_SEARCH_TOOLS[name]],
             core_client=core_client,
             semantic_client=client,
             arxiv_client=arxiv_client,

@@ -6,6 +6,8 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from .models.tools import DEFAULT_SEARCH_PROVIDER_ORDER, SearchProvider
+
 
 def _env_bool(key: str, default: bool = True) -> bool:
     """Parse env as bool: 1/true/yes => True; 0/false/no => False."""
@@ -22,6 +24,45 @@ def _parse_env_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
     return value.strip().lower() in ("1", "true", "yes")
 
 
+def _parse_provider_order(
+    env: Mapping[str, str],
+    key: str,
+) -> tuple[SearchProvider, ...]:
+    value = env.get(key)
+    if value is None or value == "":
+        return DEFAULT_SEARCH_PROVIDER_ORDER
+
+    providers = [segment.strip() for segment in value.split(",") if segment.strip()]
+    if not providers:
+        raise ValueError(
+            f"{key} must list at least one provider when it is set."
+        )
+
+    invalid = [
+        provider
+        for provider in providers
+        if provider not in DEFAULT_SEARCH_PROVIDER_ORDER
+    ]
+    if invalid:
+        allowed = ", ".join(DEFAULT_SEARCH_PROVIDER_ORDER)
+        invalid_text = ", ".join(invalid)
+        raise ValueError(
+            f"{key} contains unsupported providers: {invalid_text}. "
+            f"Supported providers: {allowed}."
+        )
+
+    duplicates = [
+        provider
+        for index, provider in enumerate(providers)
+        if provider in providers[:index]
+    ]
+    if duplicates:
+        duplicate_text = ", ".join(duplicates)
+        raise ValueError(f"{key} cannot repeat providers: {duplicate_text}")
+
+    return tuple(cast(SearchProvider, provider) for provider in providers)
+
+
 class AppSettings(BaseModel):
     """Typed application settings loaded from environment variables."""
 
@@ -34,6 +75,7 @@ class AppSettings(BaseModel):
     enable_semantic_scholar: bool = True
     enable_arxiv: bool = True
     enable_serpapi: bool = False
+    provider_order: tuple[SearchProvider, ...] = DEFAULT_SEARCH_PROVIDER_ORDER
     transport: Literal["stdio", "http", "streamable-http", "sse"] = "stdio"
     http_host: str = "127.0.0.1"
     http_port: int = 8000
@@ -58,6 +100,7 @@ class AppSettings(BaseModel):
                 "SCHOLAR_SEARCH_ENABLE_SERPAPI",
                 False,
             ),
+            provider_order=_parse_provider_order(env, "SCHOLAR_SEARCH_PROVIDER_ORDER"),
             transport=cast_transport(env.get("SCHOLAR_SEARCH_TRANSPORT")),
             http_host=env.get("SCHOLAR_SEARCH_HTTP_HOST", "127.0.0.1"),
             http_port=int(env.get("SCHOLAR_SEARCH_HTTP_PORT", "8000")),

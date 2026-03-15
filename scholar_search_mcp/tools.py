@@ -14,13 +14,36 @@ OPAQUE_CURSOR_CONTRACT = (
 TOOL_DESCRIPTIONS = {
     "search_papers": (
         "Best-effort paper search that tries CORE → Semantic Scholar → "
-        "SerpApi Google Scholar (opt-in, paid) → arXiv in order. "
+        "SerpApi Google Scholar (opt-in, paid) → arXiv in order by default. "
+        "Use preferredProvider to try one provider first, or providerOrder to "
+        "override the broker chain for this call. "
         "Optional filters: year, venue, publicationDateOrYear, "
         "fieldsOfStudy, publicationTypes, openAccessPdf, minCitationCount. "
         "Returns a single page of results (no pagination). For large paginated "
         "retrieval use search_papers_bulk. "
         "brokerMetadata.providerUsed identifies which provider supplied the results, "
         "and brokerMetadata.attemptedProviders explains skips, failures, and fallbacks."
+    ),
+    "search_papers_core": (
+        "Search papers using CORE only. Returns a single page of results with the "
+        "same normalized response shape as search_papers, but does not fall back "
+        "to other providers."
+    ),
+    "search_papers_semantic_scholar": (
+        "Search papers using Semantic Scholar only. Returns a single page of "
+        "results with the same normalized response shape as search_papers, but "
+        "does not fall back to other providers."
+    ),
+    "search_papers_serpapi": (
+        "Search papers using SerpApi Google Scholar only. Requires "
+        "SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY. Returns a "
+        "single page of results with the same normalized response shape as "
+        "search_papers, but does not fall back to other providers."
+    ),
+    "search_papers_arxiv": (
+        "Search papers using arXiv only. Returns a single page of results with "
+        "the same normalized response shape as search_papers, but does not fall "
+        "back to other providers."
     ),
     "search_papers_bulk": (
         "Paginated bulk paper search (Semantic Scholar) with advanced boolean "

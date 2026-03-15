@@ -1,6 +1,7 @@
 """Search fallback and result-shaping helpers."""
 
 import logging
+from collections.abc import Sequence
 from typing import Any, Optional
 
 from .clients.serpapi import SerpApiKeyMissingError
@@ -13,7 +14,11 @@ from .models import (
     SearchResponse,
     SemanticSearchResponse,
 )
-from .models.tools import SearchPapersArgs
+from .models.tools import (
+    DEFAULT_SEARCH_PROVIDER_ORDER,
+    SearchPapersArgs,
+    SearchProvider,
+)
 
 logger = logging.getLogger("scholar-search-mcp")
 
@@ -77,6 +82,92 @@ def _metadata(
         provider_used=provider_used,
         attempted_providers=attempts,
         semantic_scholar_only_filters=ss_only_filters,
+    )
+
+
+def _effective_provider_order(
+    *,
+    preferred_provider: SearchProvider | None,
+    provider_order: Sequence[SearchProvider] | None,
+) -> list[SearchProvider]:
+    order = list(provider_order or DEFAULT_SEARCH_PROVIDER_ORDER)
+    if preferred_provider is None:
+        return order
+    return [preferred_provider] + [
+        provider for provider in order if provider != preferred_provider
+    ]
+
+
+def _skip_for_ss_only_filters(
+    provider: SearchProvider, ss_only_filters: list[str]
+) -> BrokerAttempt | None:
+    if provider not in {"core", "serpapi_google_scholar"} or not ss_only_filters:
+        return None
+    return BrokerAttempt(
+        provider=provider,
+        status="skipped",
+        reason=(
+            "Skipped because Semantic Scholar-only filters were requested: "
+            + ", ".join(ss_only_filters)
+        ),
+    )
+
+
+def _disabled_provider_attempt(provider: SearchProvider) -> BrokerAttempt:
+    disabled_reasons = {
+        "core": "Disabled by SCHOLAR_SEARCH_ENABLE_CORE=false.",
+        "semantic_scholar": "Disabled by SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR=false.",
+        "serpapi_google_scholar": "Disabled by SCHOLAR_SEARCH_ENABLE_SERPAPI=false.",
+        "arxiv": "Disabled by SCHOLAR_SEARCH_ENABLE_ARXIV=false.",
+    }
+    return BrokerAttempt(
+        provider=provider,
+        status="skipped",
+        reason=disabled_reasons[provider],
+    )
+
+
+def _earlier_result_attempt(provider: SearchProvider) -> BrokerAttempt:
+    return BrokerAttempt(
+        provider=provider,
+        status="skipped",
+        reason="Skipped because an earlier provider already returned results.",
+    )
+
+
+def _core_result(core_response: dict[str, Any], limit: int) -> SearchResponse:
+    core_search = CoreSearchResponse.model_validate(core_response)
+    return SearchResponse(
+        total=core_search.total or len(core_search.entries),
+        offset=0,
+        data=core_search.entries[:limit],
+    )
+
+
+def _semantic_result(s2_response: dict[str, Any], limit: int) -> SearchResponse:
+    semantic_search = SemanticSearchResponse.model_validate(s2_response)
+    return SearchResponse(
+        total=semantic_search.total or len(semantic_search.data),
+        offset=semantic_search.offset,
+        data=[_enrich_ss_paper(paper) for paper in semantic_search.data[:limit]],
+    )
+
+
+def _serpapi_result(serpapi_papers: list[dict[str, Any]], limit: int) -> SearchResponse:
+    validated: list[Paper] = [Paper.model_validate(p) for p in serpapi_papers]
+    return SearchResponse(
+        total=len(validated),
+        offset=0,
+        data=validated[:limit],
+    )
+
+
+def _arxiv_result(arxiv_response: dict[str, Any], limit: int) -> SearchResponse:
+    arxiv_search = ArxivSearchResponse.model_validate(arxiv_response)
+    return SearchResponse(
+        total=arxiv_search.total_results,
+        offset=0,
+        data=arxiv_search.entries[:limit],
     )
 
 
@@ -149,8 +240,10 @@ async def search_papers_with_fallback(
     publication_types: Optional[str] = None,
     open_access_pdf: Optional[bool] = None,
     min_citation_count: Optional[int] = None,
+    preferred_provider: SearchProvider | None = None,
+    provider_order: Sequence[SearchProvider] | None = None,
 ) -> dict[str, Any]:
-    """Execute the CORE -> Semantic Scholar -> SerpApi -> arXiv search fallback chain.
+    """Execute the search broker chain using the configured provider order.
 
     CORE is skipped when any Semantic Scholar-only filter is requested
     (``publicationDateOrYear``, ``fieldsOfStudy``, ``publicationTypes``,
@@ -179,271 +272,168 @@ async def search_papers_with_fallback(
         )
         if value is not None
     ]
-    has_ss_only_filter = bool(ss_only_filters)
+    effective_order = _effective_provider_order(
+        preferred_provider=preferred_provider,
+        provider_order=provider_order,
+    )
 
     result: SearchResponse | None = None
+    provider_used = "none"
     attempts: list[BrokerAttempt] = []
-    if enable_core and not has_ss_only_filter:
-        try:
-            core_response = await core_client.search(
-                query=query,
-                limit=limit,
-                start=0,
-                year=year,
-            )
-            core_search = CoreSearchResponse.model_validate(core_response)
-            if core_search.entries:
-                result = SearchResponse(
-                    total=core_search.total or len(core_search.entries),
-                    offset=0,
-                    data=core_search.entries[:limit],
-                    broker_metadata=_metadata(
-                        provider_used="core",
-                        attempts=attempts + [
-                            BrokerAttempt(
-                                provider="core",
-                                status="returned_results",
-                            )
-                        ],
-                        ss_only_filters=ss_only_filters,
-                    ),
-                )
-                logger.info("search_papers: using CORE API results")
-            else:
-                attempts.append(
-                    BrokerAttempt(provider="core", status="returned_no_results")
-                )
-        except Exception as exc:
-            attempts.append(
-                BrokerAttempt(provider="core", status="failed", reason=str(exc))
-            )
-            logger.info(
-                "search_papers: CORE failed (%s), falling back to next channel",
-                exc,
-            )
-    elif enable_core:
-        attempts.append(
-            BrokerAttempt(
-                provider="core",
-                status="skipped",
-                reason=(
-                    "Skipped because Semantic Scholar-only filters were requested: "
-                    + ", ".join(ss_only_filters)
-                ),
-            )
-        )
-    else:
-        attempts.append(
-            BrokerAttempt(
-                provider="core",
-                status="skipped",
-                reason="Disabled by SCHOLAR_SEARCH_ENABLE_CORE=false.",
-            )
-        )
+    for index, provider in enumerate(effective_order):
+        skip_for_filters = _skip_for_ss_only_filters(provider, ss_only_filters)
+        if skip_for_filters is not None:
+            attempts.append(skip_for_filters)
+            continue
 
-    if result is None and enable_semantic_scholar:
-        try:
-            s2_response = await semantic_client.search_papers(
-                query=query,
-                limit=limit,
-                fields=fields,
-                year=year,
-                venue=venue,
-                publication_date_or_year=publication_date_or_year,
-                fields_of_study=fields_of_study,
-                publication_types=publication_types,
-                open_access_pdf=open_access_pdf,
-                min_citation_count=min_citation_count,
-            )
-            semantic_search = SemanticSearchResponse.model_validate(s2_response)
-            if semantic_search.data:
-                result = SearchResponse(
-                    total=semantic_search.total or len(semantic_search.data),
-                    offset=semantic_search.offset,
-                    data=[
-                        _enrich_ss_paper(paper)
-                        for paper in semantic_search.data[:limit]
-                    ],
-                    broker_metadata=_metadata(
-                        provider_used="semantic_scholar",
-                        attempts=attempts + [
-                            BrokerAttempt(
-                                provider="semantic_scholar",
-                                status="returned_results",
-                            )
-                        ],
-                        ss_only_filters=ss_only_filters,
-                    ),
+        if provider == "core":
+            if not enable_core:
+                attempts.append(_disabled_provider_attempt(provider))
+                continue
+            try:
+                core_response = await core_client.search(
+                    query=query,
+                    limit=limit,
+                    start=0,
+                    year=year,
                 )
-                logger.info("search_papers: using Semantic Scholar results")
-            else:
+                result = _core_result(core_response, limit)
+                if result.data:
+                    provider_used = provider
+                    attempts.append(
+                        BrokerAttempt(provider=provider, status="returned_results")
+                    )
+                    logger.info("search_papers: using CORE API results")
+                    break
+                attempts.append(
+                    BrokerAttempt(provider=provider, status="returned_no_results")
+                )
+                result = None
+            except Exception as exc:
+                attempts.append(
+                    BrokerAttempt(provider=provider, status="failed", reason=str(exc))
+                )
+                logger.info(
+                    "search_papers: CORE failed (%s), falling back to next channel",
+                    exc,
+                )
+                result = None
+            continue
+
+        if provider == "semantic_scholar":
+            if not enable_semantic_scholar:
+                attempts.append(_disabled_provider_attempt(provider))
+                continue
+            try:
+                s2_response = await semantic_client.search_papers(
+                    query=query,
+                    limit=limit,
+                    fields=fields,
+                    year=year,
+                    venue=venue,
+                    publication_date_or_year=publication_date_or_year,
+                    fields_of_study=fields_of_study,
+                    publication_types=publication_types,
+                    open_access_pdf=open_access_pdf,
+                    min_citation_count=min_citation_count,
+                )
+                result = _semantic_result(s2_response, limit)
+                if result.data:
+                    provider_used = provider
+                    attempts.append(
+                        BrokerAttempt(provider=provider, status="returned_results")
+                    )
+                    logger.info("search_papers: using Semantic Scholar results")
+                    break
+                attempts.append(
+                    BrokerAttempt(provider=provider, status="returned_no_results")
+                )
+                result = None
+            except Exception as exc:
+                attempts.append(
+                    BrokerAttempt(provider=provider, status="failed", reason=str(exc))
+                )
+                logger.info(
+                    "search_papers: Semantic Scholar failed (%s), "
+                    "falling back to next channel",
+                    exc,
+                )
+                result = None
+            continue
+
+        if provider == "serpapi_google_scholar":
+            if not enable_serpapi:
+                attempts.append(_disabled_provider_attempt(provider))
+                continue
+            if serpapi_client is None:
                 attempts.append(
                     BrokerAttempt(
-                        provider="semantic_scholar",
-                        status="returned_no_results",
+                        provider=provider,
+                        status="skipped",
+                        reason="Enabled but no SerpApi client is configured.",
                     )
                 )
-        except Exception as exc:
-            attempts.append(
-                BrokerAttempt(
-                    provider="semantic_scholar",
-                    status="failed",
-                    reason=str(exc),
+                continue
+            try:
+                serpapi_papers = await serpapi_client.search(
+                    query=query,
+                    limit=limit,
+                    year=year,
                 )
-            )
-            logger.info(
-                "search_papers: Semantic Scholar failed (%s), "
-                "falling back to next channel",
-                exc,
-            )
-    elif result is not None:
-        attempts.append(
-            BrokerAttempt(
-                provider="semantic_scholar",
-                status="skipped",
-                reason="Skipped because an earlier provider already returned results.",
-            )
-        )
-    else:
-        attempts.append(
-            BrokerAttempt(
-                provider="semantic_scholar",
-                status="skipped",
-                reason=(
-                    "Disabled by SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR=false."
-                ),
-            )
-        )
-
-    if result is None and enable_serpapi and serpapi_client is not None and (
-        not has_ss_only_filter
-    ):
-        try:
-            serpapi_papers = await serpapi_client.search(
-                query=query,
-                limit=limit,
-                year=year,
-            )
-            if serpapi_papers:
-                validated: list[Paper] = [
-                    Paper.model_validate(p) for p in serpapi_papers
-                ]
-                result = SearchResponse(
-                    total=len(validated),
-                    offset=0,
-                    data=validated[:limit],
-                    broker_metadata=_metadata(
-                        provider_used="serpapi_google_scholar",
-                        attempts=attempts + [
-                            BrokerAttempt(
-                                provider="serpapi_google_scholar",
-                                status="returned_results",
-                            )
-                        ],
-                        ss_only_filters=ss_only_filters,
-                    ),
-                )
-                logger.info("search_papers: using SerpApi Google Scholar results")
-            else:
+                result = _serpapi_result(serpapi_papers, limit)
+                if result.data:
+                    provider_used = provider
+                    attempts.append(
+                        BrokerAttempt(provider=provider, status="returned_results")
+                    )
+                    logger.info("search_papers: using SerpApi Google Scholar results")
+                    break
                 attempts.append(
-                    BrokerAttempt(
-                        provider="serpapi_google_scholar",
-                        status="returned_no_results",
-                    )
+                    BrokerAttempt(provider=provider, status="returned_no_results")
                 )
-        except SerpApiKeyMissingError:
-            # Config/auth errors are not transient — re-raise so the caller
-            # gets an actionable error instead of silently falling back to arXiv.
-            raise
-        except Exception as exc:
-            attempts.append(
-                BrokerAttempt(
-                    provider="serpapi_google_scholar",
-                    status="failed",
-                    reason=str(exc),
+                result = None
+            except SerpApiKeyMissingError:
+                raise
+            except Exception as exc:
+                attempts.append(
+                    BrokerAttempt(provider=provider, status="failed", reason=str(exc))
                 )
-            )
-            logger.info(
-                "search_papers: SerpApi failed (%s), falling back to arXiv",
-                exc,
-            )
-    elif result is not None:
-        attempts.append(
-            BrokerAttempt(
-                provider="serpapi_google_scholar",
-                status="skipped",
-                reason="Skipped because an earlier provider already returned results.",
-            )
-        )
-    elif enable_serpapi and has_ss_only_filter:
-        attempts.append(
-            BrokerAttempt(
-                provider="serpapi_google_scholar",
-                status="skipped",
-                reason=(
-                    "Skipped because Semantic Scholar-only filters were requested: "
-                    + ", ".join(ss_only_filters)
-                ),
-            )
-        )
-    elif enable_serpapi and serpapi_client is None:
-        attempts.append(
-            BrokerAttempt(
-                provider="serpapi_google_scholar",
-                status="skipped",
-                reason="Enabled but no SerpApi client is configured.",
-            )
-        )
-    else:
-        attempts.append(
-            BrokerAttempt(
-                provider="serpapi_google_scholar",
-                status="skipped",
-                reason="Disabled by SCHOLAR_SEARCH_ENABLE_SERPAPI=false.",
-            )
-        )
+                logger.info(
+                    "search_papers: SerpApi failed (%s), falling back to next channel",
+                    exc,
+                )
+                result = None
+            continue
 
-    if result is None and enable_arxiv:
+        if not enable_arxiv:
+            attempts.append(_disabled_provider_attempt(provider))
+            continue
+
         arxiv_response = await arxiv_client.search(
             query=query,
             limit=limit,
             year=year,
         )
-        arxiv_search = ArxivSearchResponse.model_validate(arxiv_response)
-        if arxiv_search.entries:
-            result = SearchResponse(
-                total=arxiv_search.total_results,
-                offset=0,
-                data=arxiv_search.entries[:limit],
-                broker_metadata=_metadata(
-                    provider_used="arxiv",
-                    attempts=attempts + [
-                        BrokerAttempt(provider="arxiv", status="returned_results")
-                    ],
-                    ss_only_filters=ss_only_filters,
-                ),
-            )
+        result = _arxiv_result(arxiv_response, limit)
+        if result.data:
+            provider_used = provider
+            attempts.append(BrokerAttempt(provider=provider, status="returned_results"))
             logger.info("search_papers: using arXiv results")
-        else:
-            attempts.append(
-                BrokerAttempt(provider="arxiv", status="returned_no_results")
-            )
-    elif result is not None:
-        attempts.append(
-            BrokerAttempt(
-                provider="arxiv",
-                status="skipped",
-                reason="Skipped because an earlier provider already returned results.",
-            )
+            break
+        attempts.append(BrokerAttempt(provider=provider, status="returned_no_results"))
+        result = None
+
+    if provider_used != "none":
+        attempts.extend(
+            _earlier_result_attempt(provider)
+            for provider in effective_order[len(attempts) :]
         )
-    else:
-        attempts.append(
-            BrokerAttempt(
-                provider="arxiv",
-                status="skipped",
-                reason="Disabled by SCHOLAR_SEARCH_ENABLE_ARXIV=false.",
+        if result is not None:
+            result.broker_metadata = _metadata(
+                provider_used=provider_used,
+                attempts=attempts,
+                ss_only_filters=ss_only_filters,
             )
-        )
 
     if result is None:
         return _dump_search_response(

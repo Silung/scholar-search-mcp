@@ -40,6 +40,9 @@ logger = logging.getLogger("scholar-search-mcp")
 
 SERVER_INSTRUCTIONS = """
 Use `search_papers` for a quick, brokered single page of candidate papers.
+Set `preferredProvider` or `providerOrder` on `search_papers` when you need to
+steer the broker, or use provider-specific `search_papers_*` tools when you
+want a single source only.
 Use `search_papers_bulk` when you need exhaustive retrieval or pagination.
 For every paginated tool, treat `pagination.nextCursor` as opaque: pass it
 back as `cursor` exactly as returned, do not derive, edit, or fabricate it,
@@ -53,6 +56,11 @@ AGENT_WORKFLOW_GUIDE = """
 # Scholar Search agent workflow guide
 
 - Start with `search_papers` when you want one best-effort page quickly.
+- Set `preferredProvider` or `providerOrder` on `search_papers` when you want
+  to steer the broker without leaving the generic tool.
+- Use `search_papers_core`, `search_papers_semantic_scholar`,
+  `search_papers_serpapi`, or `search_papers_arxiv` when you need a
+  provider-specific result surface.
 - If you need pagination or exhaustive retrieval, switch to `search_papers_bulk`.
 - Follow `brokerMetadata.providerUsed` to understand where results came from.
 - Follow `brokerMetadata.attemptedProviders` to see skipped, failed, or empty providers.
@@ -113,6 +121,23 @@ def _format_tool_display_name(name: str) -> str:
 
 
 def _tool_tags(name: str) -> set[str]:
+    provider_tags = {
+        "search_papers": {"search", "brokered"},
+        "search_papers_core": {"search", "provider-specific", "provider:core"},
+        "search_papers_semantic_scholar": {
+            "search",
+            "provider-specific",
+            "provider:semantic_scholar",
+        },
+        "search_papers_serpapi": {
+            "search",
+            "provider-specific",
+            "provider:serpapi_google_scholar",
+        },
+        "search_papers_arxiv": {"search", "provider-specific", "provider:arxiv"},
+    }
+    if name in provider_tags:
+        return provider_tags[name]
     if name.startswith("search_"):
         return {"search"}
     if name.startswith("get_paper_"):
@@ -191,6 +216,7 @@ async def _execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         enable_arxiv=enable_arxiv,
         serpapi_client=serpapi_client,
         enable_serpapi=enable_serpapi,
+        provider_order=provider_order,
     )
 
 
@@ -202,6 +228,7 @@ enable_core = settings.enable_core
 enable_semantic_scholar = settings.enable_semantic_scholar
 enable_arxiv = settings.enable_arxiv
 enable_serpapi = settings.enable_serpapi
+provider_order = list(settings.provider_order)
 client = SemanticScholarClient(api_key=api_key)
 core_client = CoreApiClient(api_key=core_api_key)
 arxiv_client = ArxivClient()
@@ -241,7 +268,9 @@ def plan_scholar_search(
     return (
         f"You are planning a scholar-search workflow about '{topic}'. Goal: {goal}. "
         "Start with search_papers for quick discovery, inspect brokerMetadata, use "
-        "search_papers_bulk when pagination or exhaustive retrieval is needed, and "
+        "preferredProvider/providerOrder or provider-specific search_papers_* tools "
+        "when source choice matters, use search_papers_bulk when pagination or "
+        "exhaustive retrieval is needed, and "
         "treat pagination.nextCursor as opaque: reuse it exactly as returned, do "
         "not edit or fabricate it, and keep it scoped to the tool/query flow that "
         "produced it."

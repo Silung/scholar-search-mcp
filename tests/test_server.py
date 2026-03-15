@@ -7,6 +7,7 @@ import pytest
 import scholar_search_mcp
 import scholar_search_mcp.__main__ as server_main
 from scholar_search_mcp import server
+from scholar_search_mcp.settings import AppSettings
 
 
 class DummyResponse:
@@ -250,10 +251,14 @@ def test_core_result_to_paper_returns_none_without_required_fields() -> None:
 async def test_list_tools_returns_expected_public_contract() -> None:
     tools = await server.list_tools()
 
-    assert len(tools) == 17
+    assert len(tools) == 21
     tool_map = {tool.name: tool for tool in tools}
     assert set(tool_map) == {
         "search_papers",
+        "search_papers_core",
+        "search_papers_semantic_scholar",
+        "search_papers_serpapi",
+        "search_papers_arxiv",
         "search_papers_bulk",
         "search_papers_match",
         "paper_autocomplete",
@@ -278,11 +283,24 @@ async def test_list_tools_returns_expected_public_contract() -> None:
         "fields",
         "year",
         "venue",
+        "preferredProvider",
+        "providerOrder",
         "publicationDateOrYear",
         "fieldsOfStudy",
         "publicationTypes",
         "openAccessPdf",
         "minCitationCount",
+    }
+    search_tags = tool_map["search_papers"].meta or {}
+    semantic_tags = tool_map["search_papers_semantic_scholar"].meta or {}
+    assert set(search_tags["fastmcp"]["tags"]) == {
+        "search",
+        "brokered",
+    }
+    assert set(semantic_tags["fastmcp"]["tags"]) == {
+        "search",
+        "provider-specific",
+        "provider:semantic_scholar",
     }
     assert tool_map["batch_get_papers"].inputSchema["required"] == ["paper_ids"]
     assert tool_map["batch_get_authors"].inputSchema["required"] == ["author_ids"]
@@ -815,6 +833,172 @@ async def test_search_papers_exposes_new_filter_params(
     assert kwargs["publication_date_or_year"] == "2020:2023"
     assert kwargs["fields_of_study"] == "Computer Science"
     assert kwargs["min_citation_count"] == 5
+
+
+@pytest.mark.asyncio
+async def test_search_papers_preferred_provider_runs_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SpyCoreClient:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def search(self, **kwargs) -> dict:
+            self.called = True
+            return {
+                "total": 1,
+                "entries": [
+                    {
+                        "paperId": "core-1",
+                        "title": "CORE paper",
+                        "url": "https://example.com/core-1",
+                    }
+                ],
+            }
+
+    class SemanticClient:
+        async def search_papers(self, **kwargs) -> dict:
+            return {
+                "total": 1,
+                "offset": 0,
+                "data": [{"paperId": "s2-1", "title": "Semantic first"}],
+            }
+
+    spy_core = SpyCoreClient()
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "core_client", spy_core)
+    monkeypatch.setattr(server, "client", SemanticClient())
+
+    payload = _payload(
+        await server.call_tool(
+            "search_papers",
+            {
+                "query": "fallback",
+                "preferredProvider": "semantic_scholar",
+            },
+        )
+    )
+
+    assert payload["data"][0]["paperId"] == "s2-1"
+    assert payload["brokerMetadata"]["providerUsed"] == "semantic_scholar"
+    assert payload["brokerMetadata"]["attemptedProviders"][0] == {
+        "provider": "semantic_scholar",
+        "status": "returned_results",
+        "reason": None,
+    }
+    assert payload["brokerMetadata"]["attemptedProviders"][1]["provider"] == "core"
+    assert payload["brokerMetadata"]["attemptedProviders"][1]["status"] == "skipped"
+    assert spy_core.called is False
+
+
+@pytest.mark.asyncio
+async def test_search_papers_provider_order_can_override_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SpyCoreClient:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def search(self, **kwargs) -> dict:
+            self.called = True
+            return {
+                "total": 1,
+                "entries": [
+                    {
+                        "paperId": "core-1",
+                        "title": "CORE paper",
+                        "url": "https://example.com/core-1",
+                    }
+                ],
+            }
+
+    class ArxivClient:
+        async def search(self, **kwargs) -> dict:
+            return {
+                "totalResults": 1,
+                "entries": [
+                    {
+                        "paperId": "arxiv-1",
+                        "title": "arXiv only",
+                        "url": "https://arxiv.org/abs/arxiv-1",
+                        "source": "arxiv",
+                    }
+                ],
+            }
+
+    spy_core = SpyCoreClient()
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "core_client", spy_core)
+    monkeypatch.setattr(server, "arxiv_client", ArxivClient())
+
+    payload = _payload(
+        await server.call_tool(
+            "search_papers",
+            {"query": "fallback", "providerOrder": ["arxiv"]},
+        )
+    )
+
+    assert payload["data"][0]["paperId"] == "arxiv-1"
+    assert payload["brokerMetadata"]["providerUsed"] == "arxiv"
+    assert payload["brokerMetadata"]["attemptedProviders"] == [
+        {"provider": "arxiv", "status": "returned_results", "reason": None}
+    ]
+    assert spy_core.called is False
+
+
+@pytest.mark.asyncio
+async def test_provider_specific_search_tool_does_not_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CoreClient:
+        async def search(self, **kwargs) -> dict:
+            return {"total": 0, "entries": []}
+
+    class SemanticClient:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def search_papers(self, **kwargs) -> dict:
+            self.called = True
+            return {
+                "total": 1,
+                "offset": 0,
+                "data": [{"paperId": "s2-1"}],
+            }
+
+    semantic_client = SemanticClient()
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "core_client", CoreClient())
+    monkeypatch.setattr(server, "client", semantic_client)
+
+    payload = _payload(await server.call_tool("search_papers_core", {"query": "test"}))
+
+    assert payload["total"] == 0
+    assert payload["brokerMetadata"]["providerUsed"] == "none"
+    assert payload["brokerMetadata"]["attemptedProviders"] == [
+        {"provider": "core", "status": "returned_no_results", "reason": None}
+    ]
+    assert semantic_client.called is False
+
+
+def test_app_settings_reads_provider_order_from_env() -> None:
+    settings = AppSettings.from_env(
+        {"SCHOLAR_SEARCH_PROVIDER_ORDER": "semantic_scholar,arxiv"}
+    )
+
+    assert settings.provider_order == ("semantic_scholar", "arxiv")
+
+
+def test_app_settings_rejects_duplicate_provider_order_entries() -> None:
+    with pytest.raises(ValueError, match="cannot repeat providers"):
+        AppSettings.from_env(
+            {"SCHOLAR_SEARCH_PROVIDER_ORDER": "core,core,semantic_scholar"}
+        )
 
 
 # ---------------------------------------------------------------------------
