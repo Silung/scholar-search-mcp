@@ -154,10 +154,15 @@ class SerpApiScholarClient:
     ) -> dict[str, Any]:
         """Return citation export formats for a Google Scholar paper.
 
-        Uses the ``google_scholar_cite`` SerpApi engine.  *result_id* is the
-        Scholar ``result_id`` from a previous ``search_papers`` call — it is
-        available as ``paper.sourceId`` on any ``serpapi_google_scholar``
-        result.
+        Uses the ``google_scholar_cite`` SerpApi engine.  *result_id* must be
+        the Scholar ``result_id`` from a previous ``search_papers`` call — it
+        is available as ``paper.scholarResultId`` on any
+        ``serpapi_google_scholar`` result.
+
+        **Do not use** ``paper.sourceId`` here: ``sourceId`` follows the
+        priority ``result_id → cluster_id → cites_id`` and may be a
+        ``cluster_id`` or ``cites_id`` rather than a ``result_id``.  Only a
+        genuine ``result_id`` is accepted by ``google_scholar_cite``.
 
         Returns the raw SerpApi response dict containing ``citations`` (text
         formats) and ``links`` (export download links).  The caller is

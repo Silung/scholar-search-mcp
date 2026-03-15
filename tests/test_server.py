@@ -2945,3 +2945,155 @@ def test_citation_formats_response_model_serializes_correctly() -> None:
     assert dumped["provider"] == "serpapi_google_scholar"
     assert dumped["citations"][0]["title"] == "MLA"
     assert dumped["exportLinks"][0]["name"] == "BibTeX"
+
+
+# ---------------------------------------------------------------------------
+# Fix: SerpApiKeyMissingError must bubble out of search_papers (not fall back)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_papers_raises_when_serpapi_enabled_without_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SerpApiKeyMissingError must propagate from search_papers, not fall back.
+
+    When SerpApi is enabled but misconfigured (no key), the caller must receive
+    an actionable error rather than silently getting arXiv results that the
+    agent cannot correlate with the configured provider.
+    """
+    from scholar_search_mcp.clients.serpapi import (
+        SerpApiKeyMissingError,
+        SerpApiScholarClient,
+    )
+
+    class FailingCoreClient:
+        async def search(self, **kwargs) -> dict:
+            raise RuntimeError("core unavailable")
+
+    class FailingSemanticClient:
+        async def search_papers(self, **kwargs) -> dict:
+            raise RuntimeError("ss unavailable")
+
+    class ArxivFallback:
+        async def search(self, **kwargs) -> dict:
+            return {
+                "totalResults": 1,
+                "entries": [{"paperId": "ax-should-not-reach"}],
+            }
+
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_serpapi", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "core_client", FailingCoreClient())
+    monkeypatch.setattr(server, "client", FailingSemanticClient())
+    # A real client with no key — will raise SerpApiKeyMissingError on search()
+    monkeypatch.setattr(
+        server, "serpapi_client", SerpApiScholarClient(api_key=None)
+    )
+    monkeypatch.setattr(server, "arxiv_client", ArxivFallback())
+
+    with pytest.raises(SerpApiKeyMissingError, match="SERPAPI_API_KEY"):
+        await server.call_tool("search_papers", {"query": "test"})
+
+
+@pytest.mark.asyncio
+async def test_search_papers_serpapi_transient_error_still_falls_back_to_arxiv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transient SerpApi failures (network/5xx) must still fall back to arXiv.
+
+    Only config/auth errors should bubble; all other failures continue the
+    normal fallback chain.
+    """
+    from scholar_search_mcp.clients.serpapi import (
+        SerpApiUpstreamError,
+    )
+
+    class FailingCoreClient:
+        async def search(self, **kwargs) -> dict:
+            raise RuntimeError("core unavailable")
+
+    class FailingSemanticClient:
+        async def search_papers(self, **kwargs) -> dict:
+            raise RuntimeError("ss unavailable")
+
+    class TransientSerpApiClient:
+        async def search(self, **kwargs) -> list[dict]:
+            raise SerpApiUpstreamError("HTTP 503 transient")
+
+    class ArxivFallback:
+        async def search(self, **kwargs) -> dict:
+            return {
+                "totalResults": 1,
+                "entries": [{"paperId": "ax-transient", "source": "arxiv"}],
+            }
+
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_serpapi", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "core_client", FailingCoreClient())
+    monkeypatch.setattr(server, "client", FailingSemanticClient())
+    monkeypatch.setattr(server, "serpapi_client", TransientSerpApiClient())
+    monkeypatch.setattr(server, "arxiv_client", ArxivFallback())
+
+    response = await server.call_tool("search_papers", {"query": "transient"})
+    payload = json.loads(response[0].text)
+
+    assert payload["data"][0]["paperId"] == "ax-transient"
+    assert payload["brokerMetadata"]["providerUsed"] == "arxiv"
+
+
+# ---------------------------------------------------------------------------
+# Fix: get_paper_citation_formats identifier contract
+# ---------------------------------------------------------------------------
+
+
+def test_serpapi_normalize_scholar_result_id_preserved_as_extra() -> None:
+    """scholarResultId extra must always be the raw result_id, never cluster_id."""
+    from scholar_search_mcp.clients.serpapi.normalize import normalize_organic_result
+
+    # result_id present: scholarResultId == result_id, sourceId == result_id
+    paper = normalize_organic_result({
+        "title": "Result ID Paper",
+        "result_id": "rid-100",
+        "inline_links": {"versions": {"cluster_id": "cid-100"}},
+    })
+    assert paper is not None
+    assert paper["scholarResultId"] == "rid-100"
+    assert paper["sourceId"] == "rid-100"  # result_id wins in sourceId priority
+    assert paper["scholarClusterId"] == "cid-100"
+
+    # result_id absent: sourceId falls back to cluster_id; scholarResultId absent
+    paper2 = normalize_organic_result({
+        "title": "Cluster Only Paper",
+        "inline_links": {"versions": {"cluster_id": "cid-only"}},
+    })
+    assert paper2 is not None
+    assert paper2["sourceId"] == "cid-only"
+    assert "scholarResultId" not in paper2  # no result_id available
+
+
+def test_serpapi_normalize_source_id_not_same_as_result_id_when_absent() -> None:
+    """sourceId diverges from result_id when only cluster_id or cites_id exists.
+
+    This confirms the contract: agents MUST use scholarResultId (not sourceId)
+    when calling get_paper_citation_formats.
+    """
+    from scholar_search_mcp.clients.serpapi.normalize import normalize_organic_result
+
+    paper = normalize_organic_result({
+        "title": "Cites ID Only Paper",
+        "inline_links": {
+            "cited_by": {"cites_id": "cites-999", "total": 5}
+        },
+    })
+    assert paper is not None
+    # sourceId falls back to cites_id — NOT a result_id
+    assert paper["sourceId"] == "cites-999"
+    # No result_id => no scholarResultId extra
+    assert "scholarResultId" not in paper
+    # Trying to use sourceId with get_paper_citation_formats would fail;
+    # get_paper_citation_formats should only be called when scholarResultId exists.

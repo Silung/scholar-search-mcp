@@ -185,7 +185,7 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 | `get_paper_recommendations`      | Similar papers for a given paper (GET single-seed)                                                       |
 | `get_paper_recommendations_post` | Similar papers from positive and negative seed sets (POST multi-seed)                                    |
 | `batch_get_papers`               | Details for up to 500 paper IDs                                                                          |
-| `get_paper_citation_formats`     | Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar paper. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Pass `result_id` from `paper.sourceId` on a `serpapi_google_scholar` result. Single non-paginated response. |
+| `get_paper_citation_formats`     | Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar paper. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Pass `result_id=paper.scholarResultId` (not `paper.sourceId`) from a `serpapi_google_scholar` result. Single non-paginated response. |
 
 
 ## Testing with MCP Inspector

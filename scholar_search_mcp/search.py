@@ -3,6 +3,7 @@
 import logging
 from typing import Any, Optional
 
+from .clients.serpapi import SerpApiKeyMissingError
 from .models import (
     ArxivSearchResponse,
     BrokerMetadata,
@@ -228,6 +229,10 @@ async def search_papers_with_fallback(
                     ),
                 )
                 logger.info("search_papers: using SerpApi Google Scholar results")
+        except SerpApiKeyMissingError:
+            # Config/auth errors are not transient — re-raise so the caller
+            # gets an actionable error instead of silently falling back to arXiv.
+            raise
         except Exception as exc:
             logger.info(
                 "search_papers: SerpApi failed (%s), falling back to arXiv",
