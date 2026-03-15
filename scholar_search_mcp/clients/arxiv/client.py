@@ -152,5 +152,7 @@ class ArxivClient:
                 url=link_alternate or f"https://arxiv.org/abs/{arxiv_id}",
                 pdfUrl=link_pdf,
                 source="arxiv",
+                sourceId=arxiv_id,
+                canonicalId=arxiv_id,
             )
         )

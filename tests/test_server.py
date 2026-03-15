@@ -189,6 +189,8 @@ def test_core_result_to_paper_prefers_doi_url_and_normalizes_metadata() -> None:
         "url": "https://doi.org/10.1000/example-doi",
         "pdfUrl": "https://downloads.example/paper.pdf",
         "source": "core",
+        "sourceId": "42",
+        "canonicalId": "10.1000/example-doi",
     }
 
 
@@ -2070,3 +2072,158 @@ async def test_context_hash_same_paper_accepts_cursor(
     assert page2["pagination"]["hasMore"] is False
     _, second_kwargs = fake_client.calls[1]
     assert second_kwargs["offset"] == 100
+
+
+# ---------------------------------------------------------------------------
+# Per-paper provenance metadata tests
+# ---------------------------------------------------------------------------
+
+
+def test_arxiv_paper_has_provenance_fields() -> None:
+    """arXiv papers must expose source, sourceId, and canonicalId."""
+    entry = ET.fromstring(
+        """
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:arxiv="http://arxiv.org/schemas/atom">
+          <id>http://arxiv.org/abs/2305.12345v1</id>
+          <title>Provenance Test Paper</title>
+          <summary>Abstract text.</summary>
+          <published>2023-05-01T00:00:00Z</published>
+          <author><name>Jane Doe</name></author>
+          <link rel="alternate" href="https://arxiv.org/abs/2305.12345v1" />
+          <arxiv:primary_category term="cs.LG" />
+        </entry>
+        """
+    )
+    paper = server.ArxivClient()._entry_to_paper(entry)
+
+    assert paper is not None
+    assert paper["source"] == "arxiv"
+    assert paper["sourceId"] == "2305.12345"
+    assert paper["canonicalId"] == "2305.12345"
+
+
+def test_core_paper_has_provenance_fields_with_doi() -> None:
+    """CORE papers with a DOI must prefer the DOI as canonicalId."""
+    paper = server.CoreApiClient()._result_to_paper(
+        {
+            "id": 98765,
+            "doi": "10.1234/core-test",
+            "title": "CORE Provenance Test",
+            "downloadUrl": "https://core.ac.uk/download/pdf/98765.pdf",
+        }
+    )
+
+    assert paper is not None
+    assert paper["source"] == "core"
+    assert paper["sourceId"] == "98765"
+    assert paper["canonicalId"] == "10.1234/core-test"
+
+
+def test_core_paper_canonical_id_falls_back_to_source_id_without_doi() -> None:
+    """CORE papers without a DOI must use the CORE native ID as canonicalId."""
+    paper = server.CoreApiClient()._result_to_paper(
+        {
+            "id": 11111,
+            "title": "CORE No-DOI Paper",
+            "downloadUrl": "https://core.ac.uk/download/pdf/11111.pdf",
+        }
+    )
+
+    assert paper is not None
+    assert paper["source"] == "core"
+    assert paper["sourceId"] == "11111"
+    assert paper["canonicalId"] == "11111"
+
+
+def test_ss_paper_has_provenance_fields_with_doi() -> None:
+    """Semantic Scholar papers with a DOI must prefer the DOI as canonicalId."""
+    from scholar_search_mcp.search import _enrich_ss_paper
+    from scholar_search_mcp.models import Paper
+
+    paper = Paper.model_validate(
+        {
+            "paperId": "649def34f8be52c8b66281af98ae884c09aef38b",
+            "title": "Attention Is All You Need",
+            "externalIds": {
+                "DOI": "10.5555/3295222.3295349",
+                "ArXiv": "1706.03762",
+            },
+        }
+    )
+    enriched = _enrich_ss_paper(paper)
+
+    assert enriched.source == "semantic_scholar"
+    assert enriched.source_id == "649def34f8be52c8b66281af98ae884c09aef38b"
+    assert enriched.canonical_id == "10.5555/3295222.3295349"
+
+
+def test_ss_paper_canonical_id_falls_back_to_paper_id_without_doi() -> None:
+    """Semantic Scholar papers without a DOI must fall back to paperId as canonicalId."""
+    from scholar_search_mcp.search import _enrich_ss_paper
+    from scholar_search_mcp.models import Paper
+
+    paper = Paper.model_validate(
+        {
+            "paperId": "aabbcc1234",
+            "title": "No DOI Paper",
+            "externalIds": {"ArXiv": "2001.00001"},
+        }
+    )
+    enriched = _enrich_ss_paper(paper)
+
+    assert enriched.source == "semantic_scholar"
+    assert enriched.source_id == "aabbcc1234"
+    assert enriched.canonical_id == "aabbcc1234"
+
+
+def test_ss_paper_canonical_id_uses_arxiv_id_when_no_doi_or_paper_id() -> None:
+    """When paperId is absent, arXiv ID is used as canonicalId."""
+    from scholar_search_mcp.search import _enrich_ss_paper
+    from scholar_search_mcp.models import Paper
+
+    paper = Paper.model_validate(
+        {
+            "title": "ArXiv Only Paper",
+            "externalIds": {"ArXiv": "2111.99999"},
+        }
+    )
+    enriched = _enrich_ss_paper(paper)
+
+    assert enriched.source == "semantic_scholar"
+    assert enriched.source_id is None
+    assert enriched.canonical_id == "2111.99999"
+
+
+@pytest.mark.asyncio
+async def test_search_papers_ss_results_include_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """search_papers results from Semantic Scholar must include provenance fields."""
+
+    class ProvenanceFakeClient:
+        async def search_papers(self, **kwargs: Any) -> dict:
+            return {
+                "total": 1,
+                "offset": 0,
+                "data": [
+                    {
+                        "paperId": "ss-paper-id",
+                        "title": "SS Provenance Test",
+                        "externalIds": {"DOI": "10.9999/test"},
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(server, "enable_core", False)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_arxiv", False)
+    monkeypatch.setattr(server, "client", ProvenanceFakeClient())
+
+    response = await server.call_tool("search_papers", {"query": "provenance test"})
+    payload = json.loads(response[0].text)
+    paper = payload["data"][0]
+
+    assert paper["source"] == "semantic_scholar"
+    assert paper["sourceId"] == "ss-paper-id"
+    assert paper["canonicalId"] == "10.9999/test"

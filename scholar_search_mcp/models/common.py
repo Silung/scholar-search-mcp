@@ -56,6 +56,8 @@ class Paper(ApiModel):
     url: str | None = None
     pdf_url: str | None = Field(default=None, alias="pdfUrl")
     source: str | None = None
+    source_id: str | None = Field(default=None, alias="sourceId")
+    canonical_id: str | None = Field(default=None, alias="canonicalId")
 
 
 class BrokerMetadata(BaseModel):
