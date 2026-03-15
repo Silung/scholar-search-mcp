@@ -1485,6 +1485,7 @@ async def test_search_papers_broker_metadata_continuation_always_false(
 
     assert payload["brokerMetadata"]["continuationSupported"] is False
 
+
 # ---------------------------------------------------------------------------
 # Structured cursor tests
 # ---------------------------------------------------------------------------

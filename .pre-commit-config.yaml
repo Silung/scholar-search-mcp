@@ -29,6 +29,7 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file, pyproject.toml, --no-incremental]
+        pass_filenames: false
         additional_dependencies:
           - anyio>=4.0.0
           - defusedxml>=0.7.1
