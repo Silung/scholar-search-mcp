@@ -28,9 +28,11 @@ class AppSettings(BaseModel):
 
     semantic_scholar_api_key: str | None = None
     core_api_key: str | None = None
+    serpapi_api_key: str | None = None
     enable_core: bool = True
     enable_semantic_scholar: bool = True
     enable_arxiv: bool = True
+    enable_serpapi: bool = False
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "AppSettings":
@@ -38,6 +40,7 @@ class AppSettings(BaseModel):
         return cls(
             semantic_scholar_api_key=env.get("SEMANTIC_SCHOLAR_API_KEY"),
             core_api_key=env.get("CORE_API_KEY"),
+            serpapi_api_key=env.get("SERPAPI_API_KEY"),
             enable_core=_parse_env_bool(env, "SCHOLAR_SEARCH_ENABLE_CORE", True),
             enable_semantic_scholar=_parse_env_bool(
                 env,
@@ -45,4 +48,9 @@ class AppSettings(BaseModel):
                 True,
             ),
             enable_arxiv=_parse_env_bool(env, "SCHOLAR_SEARCH_ENABLE_ARXIV", True),
+            enable_serpapi=_parse_env_bool(
+                env,
+                "SCHOLAR_SEARCH_ENABLE_SERPAPI",
+                False,
+            ),
         )

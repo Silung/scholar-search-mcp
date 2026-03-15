@@ -10,8 +10,10 @@ def run_server(
     enable_core: bool,
     enable_semantic_scholar: bool,
     enable_arxiv: bool,
+    enable_serpapi: bool = False,
     api_key: str | None,
     core_api_key: str | None,
+    serpapi_api_key: str | None = None,
 ) -> None:
     """Run the MCP server over stdio."""
     import anyio
@@ -19,9 +21,10 @@ def run_server(
 
     logger.info("Starting Scholar Search MCP Server...")
     logger.info(
-        "Search channels: CORE=%s, Semantic Scholar=%s, arXiv=%s",
+        "Search channels: CORE=%s, Semantic Scholar=%s, SerpApi=%s, arXiv=%s",
         enable_core,
         enable_semantic_scholar,
+        enable_serpapi,
         enable_arxiv,
     )
     if api_key:
@@ -34,6 +37,19 @@ def run_server(
         logger.info(
             "No CORE API key; search still tries CORE first "
             "(subject to rate limits), then S2/arXiv"
+        )
+    if enable_serpapi:
+        if serpapi_api_key:
+            logger.info("SerpApi Google Scholar enabled with API key")
+        else:
+            logger.warning(
+                "SerpApi Google Scholar is enabled but SERPAPI_API_KEY is not set; "
+                "calls to SerpApi-backed tools will fail with a helpful error"
+            )
+    else:
+        logger.info(
+            "SerpApi Google Scholar is disabled (set "
+            "SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY to enable)"
         )
 
     async def arun() -> None:

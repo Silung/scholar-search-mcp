@@ -110,22 +110,29 @@ async def search_papers_with_fallback(
     enable_core: bool,
     enable_semantic_scholar: bool,
     enable_arxiv: bool,
+    enable_serpapi: bool = False,
     core_client: Any,
     semantic_client: Any,
     arxiv_client: Any,
+    serpapi_client: Any = None,
     publication_date_or_year: Optional[str] = None,
     fields_of_study: Optional[str] = None,
     publication_types: Optional[str] = None,
     open_access_pdf: Optional[bool] = None,
     min_citation_count: Optional[int] = None,
 ) -> dict[str, Any]:
-    """Execute the CORE -> Semantic Scholar -> arXiv search fallback chain.
+    """Execute the CORE -> Semantic Scholar -> SerpApi -> arXiv search fallback chain.
 
     CORE is skipped when any Semantic Scholar-only filter is requested
     (``publicationDateOrYear``, ``fieldsOfStudy``, ``publicationTypes``,
     ``openAccessPdf``, ``minCitationCount``) because CORE does not support those
     parameters, and silently returning un-filtered CORE results would violate the
     caller's intent.
+
+    SerpApi Google Scholar is included in the fallback chain when
+    ``enable_serpapi=True`` (opt-in, paid API).  It is also skipped when any
+    Semantic Scholar-only filter is requested, because those filters have no
+    equivalent in Google Scholar.
 
     Pagination is intentionally not supported here: each provider uses a different
     continuation mechanism and mixing pages from different backends would produce
@@ -196,6 +203,34 @@ async def search_papers_with_fallback(
             logger.info(
                 "search_papers: Semantic Scholar failed (%s), "
                 "falling back to next channel",
+                exc,
+            )
+
+    if result is None and enable_serpapi and serpapi_client is not None and (
+        not has_ss_only_filter
+    ):
+        try:
+            serpapi_papers = await serpapi_client.search(
+                query=query,
+                limit=limit,
+                year=year,
+            )
+            if serpapi_papers:
+                validated: list[Paper] = [
+                    Paper.model_validate(p) for p in serpapi_papers
+                ]
+                result = SearchResponse(
+                    total=len(validated),
+                    offset=0,
+                    data=validated[:limit],
+                    broker_metadata=BrokerMetadata(
+                        provider_used="serpapi_google_scholar"
+                    ),
+                )
+                logger.info("search_papers: using SerpApi Google Scholar results")
+        except Exception as exc:
+            logger.info(
+                "search_papers: SerpApi failed (%s), falling back to arXiv",
                 exc,
             )
 

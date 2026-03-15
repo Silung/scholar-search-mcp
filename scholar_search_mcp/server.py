@@ -8,6 +8,7 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from .clients import ArxivClient, CoreApiClient, SemanticScholarClient
+from .clients.serpapi import SerpApiScholarClient
 from .constants import (
     API_BASE_URL,
     ARXIV_API_BASE,
@@ -48,6 +49,7 @@ __all__ = [
     "SemanticScholarClient",
     "CoreApiClient",
     "ArxivClient",
+    "SerpApiScholarClient",
     "_arxiv_id_from_url",
     "_text",
     "_core_response_to_merged",
@@ -58,12 +60,15 @@ __all__ = [
     "app",
     "api_key",
     "core_api_key",
+    "serpapi_api_key",
     "enable_core",
     "enable_semantic_scholar",
     "enable_arxiv",
+    "enable_serpapi",
     "client",
     "core_client",
     "arxiv_client",
+    "serpapi_client",
     "list_tools",
     "call_tool",
     "main",
@@ -74,12 +79,15 @@ app = Server("scholar-search")
 settings = AppSettings.from_env()
 api_key = settings.semantic_scholar_api_key
 core_api_key = settings.core_api_key
+serpapi_api_key = settings.serpapi_api_key
 enable_core = settings.enable_core
 enable_semantic_scholar = settings.enable_semantic_scholar
 enable_arxiv = settings.enable_arxiv
+enable_serpapi = settings.enable_serpapi
 client = SemanticScholarClient(api_key=api_key)
 core_client = CoreApiClient(api_key=core_api_key)
 arxiv_client = ArxivClient()
+serpapi_client = SerpApiScholarClient(api_key=serpapi_api_key)
 
 
 @app.list_tools()
@@ -100,6 +108,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         enable_core=enable_core,
         enable_semantic_scholar=enable_semantic_scholar,
         enable_arxiv=enable_arxiv,
+        serpapi_client=serpapi_client,
+        enable_serpapi=enable_serpapi,
     )
 
     return [
@@ -118,8 +128,10 @@ def main() -> None:
         enable_core=enable_core,
         enable_semantic_scholar=enable_semantic_scholar,
         enable_arxiv=enable_arxiv,
+        enable_serpapi=enable_serpapi,
         api_key=api_key,
         core_api_key=core_api_key,
+        serpapi_api_key=serpapi_api_key,
     )
 
 

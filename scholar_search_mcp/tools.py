@@ -6,11 +6,13 @@ from .models import TOOL_INPUT_MODELS
 
 TOOL_DESCRIPTIONS = {
     "search_papers": (
-        "Best-effort paper search that tries CORE → Semantic Scholar → arXiv in "
-        "order. Optional filters: year, venue, publicationDateOrYear, "
+        "Best-effort paper search that tries CORE → Semantic Scholar → "
+        "SerpApi Google Scholar (opt-in, paid) → arXiv in order. "
+        "Optional filters: year, venue, publicationDateOrYear, "
         "fieldsOfStudy, publicationTypes, openAccessPdf, minCitationCount. "
         "Returns a single page of results (no pagination). For large paginated "
-        "retrieval use search_papers_bulk."
+        "retrieval use search_papers_bulk. "
+        "brokerMetadata.providerUsed identifies which provider supplied the results."
     ),
     "search_papers_bulk": (
         "Paginated bulk paper search (Semantic Scholar) with advanced boolean "
@@ -59,6 +61,16 @@ TOOL_DESCRIPTIONS = {
         "Get paper recommendations from positive and negative seed sets."
     ),
     "batch_get_papers": "Get details for multiple papers (up to 500).",
+    "get_paper_citation_formats": (
+        "Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar "
+        "paper. Requires SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY "
+        "(paid SerpApi service, results cached 1 hour). "
+        "Pass result_id from a serpapi_google_scholar search_papers result "
+        "(available as paper.sourceId). "
+        "Returns text citation strings and structured export links (BibTeX, "
+        "EndNote, RefMan, RefWorks). "
+        "Not paginated — single response per paper."
+    ),
 }
 
 

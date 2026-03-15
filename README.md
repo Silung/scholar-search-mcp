@@ -1,12 +1,12 @@
 # Scholar Search MCP
 
-A MCP server that integrates the [CORE API v3](https://api.core.ac.uk/docs/v3), [Semantic Scholar API](https://www.semanticscholar.org/product/api), and [arXiv API](https://info.arxiv.org/help/api/user-manual.html) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
+A MCP server that integrates the [CORE API v3](https://api.core.ac.uk/docs/v3), [Semantic Scholar API](https://www.semanticscholar.org/product/api), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), and optionally [SerpApi Google Scholar](https://serpapi.com/google-scholar-api) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
 
 The package now uses Pydantic for tool inputs, settings, and normalized provider payloads, and the provider clients are organized as expandable subpackages under `scholar_search_mcp/clients/`.
 
 ## Features
 
-- **Search papers** – Keyword search with **fallback chain**: tries **CORE API** first (no key required; set `CORE_API_KEY` for higher limits), then **Semantic Scholar**, then **arXiv**; optional year, venue, and advanced filters (fieldsOfStudy/publicationTypes/openAccessPdf/minCitationCount apply to Semantic Scholar only). Returns a single best-effort page — not paginated.
+- **Search papers** – Keyword search with **fallback chain**: tries **CORE API** first (no key required; set `CORE_API_KEY` for higher limits), then **Semantic Scholar**, then optionally **SerpApi Google Scholar** (opt-in paid), then **arXiv**; optional year, venue, and advanced filters (fieldsOfStudy/publicationTypes/openAccessPdf/minCitationCount apply to Semantic Scholar only). Returns a single best-effort page — not paginated.
 - **Bulk paper search** – Boolean-syntax search via `/paper/search/bulk` with cursor-based pagination (up to 1,000 papers/call); pass `pagination.nextCursor` as `cursor` for subsequent pages
 - **Best-match / autocomplete** – Single best title match and typeahead completions
 - **Paper details** – Full metadata (title, authors, abstract, citations, etc.)
@@ -16,6 +16,7 @@ The package now uses Pydantic for tool inputs, settings, and normalized provider
 - **Snippet search** – Quote-like text snippet search returning snippet text, paper metadata, and score
 - **Batch lookup** – Fetch up to 500 papers in one call
 - **Recommendations** – Similar papers via single-seed GET or multi-seed POST
+- **Citation formats** – Get MLA, APA, BibTeX, and other citation export formats for a Google Scholar paper (requires SerpApi)
 - **Shared rate limiter** – One 1 req/s pacing lock shared across all Semantic Scholar endpoints
 
 ## Installation
@@ -85,7 +86,8 @@ Add an MCP server in Cursor settings with the same `command`, `args`, and `env` 
 
 1. **CORE API** – Tried first; works without a key (subject to [rate limits](https://api.core.ac.uk/docs/v3#section/Rate-limits)). Set `CORE_API_KEY` for higher limits ([register](https://core.ac.uk/api-keys/register)).
 2. **Semantic Scholar** – Used if CORE fails; works without a key with lower limits. Set `SEMANTIC_SCHOLAR_API_KEY` for higher limits.
-3. **arXiv** – Used as last fallback; no key required.
+3. **SerpApi Google Scholar** – Optional paid provider, skipped by default. Enable with `SCHOLAR_SEARCH_ENABLE_SERPAPI=true` and set `SERPAPI_API_KEY`. See [SerpApi pricing](https://serpapi.com/pricing).
+4. **arXiv** – Used as last fallback; no key required.
 
 `search_papers` is a **brokered single-page search**: it returns results from the first provider that succeeds and does **not** support cursor-based pagination. Every response includes a `brokerMetadata` field that makes this contract explicit:
 
@@ -103,19 +105,55 @@ Add an MCP server in Cursor settings with the same `command`, `args`, and `env` 
 | Field                  | Description                                                                                          |
 | ---------------------- | ---------------------------------------------------------------------------------------------------- |
 | `mode`                 | Always `"brokered_single_page"` for `search_papers`.                                                 |
-| `providerUsed`         | Which provider supplied the results: `core`, `semantic_scholar`, `arxiv`, or `none` if no provider returned results. |
+| `providerUsed`         | Which provider supplied the results: `core`, `semantic_scholar`, `serpapi_google_scholar`, `arxiv`, or `none` if no provider returned results. |
 | `continuationSupported`| Always `false` — use `search_papers_bulk` for paginated retrieval.                                   |
+
+When SerpApi supplies the results, the response looks like:
+
+```json
+{
+  "data": [
+    {
+      "title": "Attention Is All You Need",
+      "source": "serpapi_google_scholar",
+      "sourceId": "result_id_from_scholar",
+      "canonicalId": "10.xxxx/cluster-or-doi",
+      "year": 2017,
+      "citationCount": 80000
+    }
+  ],
+  "brokerMetadata": {
+    "mode": "brokered_single_page",
+    "providerUsed": "serpapi_google_scholar",
+    "continuationSupported": false
+  }
+}
+```
 
 ### Enable/disable search channels
 
-Control which sources are used in the `search_papers` fallback chain via environment variables (default: all enabled):
+Control which sources are used in the `search_papers` fallback chain via environment variables:
 
 
-| Variable                                 | Description                                                            |
-| ---------------------------------------- | ---------------------------------------------------------------------- |
-| `SCHOLAR_SEARCH_ENABLE_CORE`             | Use CORE API (default: true). Set to `0`, `false`, or `no` to disable. |
-| `SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR` | Use Semantic Scholar (default: true).                                  |
-| `SCHOLAR_SEARCH_ENABLE_ARXIV`            | Use arXiv (default: true).                                             |
+| Variable                                 | Default | Description                                                            |
+| ---------------------------------------- | ------- | ---------------------------------------------------------------------- |
+| `SCHOLAR_SEARCH_ENABLE_CORE`             | `true`  | Use CORE API. Set to `0`, `false`, or `no` to disable.                 |
+| `SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR` | `true`  | Use Semantic Scholar.                                                  |
+| `SCHOLAR_SEARCH_ENABLE_SERPAPI`          | `false` | Use SerpApi Google Scholar (opt-in, **paid**). Set `SERPAPI_API_KEY`.  |
+| `SCHOLAR_SEARCH_ENABLE_ARXIV`            | `true`  | Use arXiv (last-resort free fallback).                                 |
+
+SerpApi is disabled by default to prevent unexpected costs. When enabled without an API key, affected tool calls return a clear error rather than silently failing.
+
+SerpApi-specific filters (`publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount`) bypass SerpApi in the fallback chain (same behaviour as CORE).
+
+Example: enable SerpApi as an additional coverage fallback:
+
+```json
+"env": {
+  "SCHOLAR_SEARCH_ENABLE_SERPAPI": "true",
+  "SERPAPI_API_KEY": "your-serpapi-key-here"
+}
+```
 
 
 Example: CORE and arXiv only (skip Semantic Scholar):
@@ -131,7 +169,7 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 
 | Tool                             | Description                                                                                              |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `search_papers`                  | Single-page best-effort search (CORE → Semantic Scholar → arXiv). Optional filters: `limit`, `fields`, `year`, `venue`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount`. No pagination — for paginated retrieval use `search_papers_bulk`. |
+| `search_papers`                  | Single-page best-effort search (CORE → Semantic Scholar → SerpApi Google Scholar → arXiv). Optional filters: `limit`, `fields`, `year`, `venue`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount`. No pagination — for paginated retrieval use `search_papers_bulk`. |
 | `search_papers_bulk`             | Paginated bulk paper search (Semantic Scholar) with advanced boolean query syntax (up to 1,000 papers/call). Pass `cursor=pagination.nextCursor` for subsequent pages; `pagination.hasMore` signals more results. |
 | `search_papers_match`            | Find the single paper whose title best matches the query string                                          |
 | `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |
@@ -147,6 +185,7 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 | `get_paper_recommendations`      | Similar papers for a given paper (GET single-seed)                                                       |
 | `get_paper_recommendations_post` | Similar papers from positive and negative seed sets (POST multi-seed)                                    |
 | `batch_get_papers`               | Details for up to 500 paper IDs                                                                          |
+| `get_paper_citation_formats`     | Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar paper. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Pass `result_id` from `paper.sourceId` on a `serpapi_google_scholar` result. Single non-paginated response. |
 
 
 ## Testing with MCP Inspector

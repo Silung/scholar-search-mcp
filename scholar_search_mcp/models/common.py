@@ -292,6 +292,40 @@ class RecommendationResponse(ApiModel):
     )
 
 
+class CitationFormat(ApiModel):
+    """One text citation format (e.g. MLA, APA) returned by
+    get_paper_citation_formats."""
+
+    title: str = ""
+    snippet: str = ""
+
+
+class ExportLink(ApiModel):
+    """One export download link (e.g. BibTeX, EndNote) returned by
+    get_paper_citation_formats."""
+
+    name: str = ""
+    link: str = ""
+
+
+class CitationFormatsResponse(ApiModel):
+    """Response from the ``get_paper_citation_formats`` tool.
+
+    ``result_id`` echoes the Scholar result_id used for the lookup.
+    ``citations`` contains text citation strings (MLA, APA, Chicago, etc.).
+    ``export_links`` contains structured-format download links (BibTeX, etc.).
+    ``provider`` identifies the upstream service that supplied the data.
+    """
+
+    result_id: str = Field(serialization_alias="resultId")
+    citations: list[CitationFormat] = Field(default_factory=list)
+    export_links: list[ExportLink] = Field(
+        default_factory=list,
+        serialization_alias="exportLinks",
+    )
+    provider: str = "serpapi_google_scholar"
+
+
 class BatchPaperResponse(RootModel[list[Paper]]):
     """Semantic Scholar batch lookup response."""
 

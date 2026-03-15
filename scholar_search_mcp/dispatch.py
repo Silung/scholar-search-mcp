@@ -2,8 +2,10 @@
 
 from typing import Any, Callable, cast
 
-from .models import TOOL_INPUT_MODELS, dump_jsonable
-from .models.tools import SearchPapersArgs
+from .clients.serpapi import SerpApiKeyMissingError
+from .models import TOOL_INPUT_MODELS, CitationFormatsResponse, dump_jsonable
+from .models.common import CitationFormat, ExportLink
+from .models.tools import GetCitationFormatsArgs, SearchPapersArgs
 from .search import search_papers_with_fallback
 from .utils.cursor import (
     OFFSET_TOOLS,
@@ -292,6 +294,8 @@ async def dispatch_tool(
     enable_core: bool,
     enable_semantic_scholar: bool,
     enable_arxiv: bool,
+    serpapi_client: Any = None,
+    enable_serpapi: bool = False,
 ) -> dict[str, Any]:
     """Dispatch one MCP tool call to the correct backend implementation."""
     if name == "search_papers":
@@ -313,10 +317,58 @@ async def dispatch_tool(
             enable_core=enable_core,
             enable_semantic_scholar=enable_semantic_scholar,
             enable_arxiv=enable_arxiv,
+            enable_serpapi=enable_serpapi,
             core_client=core_client,
             semantic_client=client,
             arxiv_client=arxiv_client,
+            serpapi_client=serpapi_client,
         )
+
+    if name == "get_paper_citation_formats":
+        validated_cf = cast(
+            GetCitationFormatsArgs,
+            TOOL_INPUT_MODELS[name].model_validate(arguments),
+        )
+        if not enable_serpapi:
+            raise ValueError(
+                "get_paper_citation_formats requires SerpApi, which is not enabled. "
+                "Set SCHOLAR_SEARCH_ENABLE_SERPAPI=true and provide SERPAPI_API_KEY "
+                "to use this tool. SerpApi is a paid service — see "
+                "https://serpapi.com for details."
+            )
+        if serpapi_client is None:
+            raise ValueError(
+                "SerpApi client is not available. "
+                "Set SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY."
+            )
+        try:
+            raw = await serpapi_client.get_citation_formats(
+                result_id=validated_cf.result_id,
+            )
+        except SerpApiKeyMissingError:
+            raise
+        raw_citations = raw.get("citations") or []
+        raw_links = raw.get("links") or []
+        response = CitationFormatsResponse(
+            result_id=validated_cf.result_id,
+            citations=[
+                CitationFormat(
+                    title=str(c.get("title") or ""),
+                    snippet=str(c.get("snippet") or ""),
+                )
+                for c in raw_citations
+                if isinstance(c, dict)
+            ],
+            export_links=[
+                ExportLink(
+                    name=str(lnk.get("name") or ""),
+                    link=str(lnk.get("link") or ""),
+                )
+                for lnk in raw_links
+                if isinstance(lnk, dict)
+            ],
+        )
+        return dump_jsonable(response)
 
     try:
         method_name, build_args = NON_SEARCH_TOOL_HANDLERS[name]
