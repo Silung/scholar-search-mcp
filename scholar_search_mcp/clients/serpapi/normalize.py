@@ -35,19 +35,19 @@ def _parse_year_range(year: str) -> tuple[Optional[int], Optional[int]]:
         low_str, high_str = parts[0].strip(), parts[1].strip()
         year_low: Optional[int] = None
         year_high: Optional[int] = None
-        if low_str and low_str[:4].isdigit():
+        if len(low_str) >= 4 and low_str[:4].isdigit():
             try:
                 year_low = int(low_str[:4])
             except ValueError:
                 pass
-        if high_str and high_str[:4].isdigit():
+        if len(high_str) >= 4 and high_str[:4].isdigit():
             try:
                 year_high = int(high_str[:4])
             except ValueError:
                 pass
         return year_low, year_high
     else:
-        if year[:4].isdigit():
+        if len(year) >= 4 and year[:4].isdigit():
             try:
                 y = int(year[:4])
                 return y, y

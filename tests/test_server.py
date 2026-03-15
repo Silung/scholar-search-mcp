@@ -2350,6 +2350,10 @@ def test_serpapi_normalize_year_range_parser() -> None:
     assert _parse_year_range("2020-") == (2020, None)
     assert _parse_year_range("-2023") == (None, 2023)
     assert _parse_year_range("invalid") == (None, None)
+    # Short strings that are not 4-digit years must not cause errors
+    assert _parse_year_range("20") == (None, None)
+    assert _parse_year_range("20-23") == (None, None)
+    assert _parse_year_range("") == (None, None)
 
 
 def test_serpapi_normalize_source_id_fallback_chain() -> None:
