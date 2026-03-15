@@ -3,7 +3,7 @@
 import json
 import logging
 from inspect import Parameter, Signature
-from typing import Any
+from typing import Any, Literal, cast
 
 from fastmcp import FastMCP
 from fastmcp.server.middleware.timing import TimingMiddleware
@@ -41,9 +41,11 @@ logger = logging.getLogger("scholar-search-mcp")
 SERVER_INSTRUCTIONS = """
 Use `search_papers` for a quick, brokered single page of candidate papers.
 Use `search_papers_bulk` when you need exhaustive retrieval or pagination.
-For every paginated tool, pass `pagination.nextCursor` back as `cursor` exactly as returned.
-Inspect `brokerMetadata` on `search_papers` responses to see which providers were attempted,
-which one produced the results, and whether Semantic Scholar-only filters narrowed the route.
+For every paginated tool, pass `pagination.nextCursor` back as `cursor`
+exactly as returned.
+Inspect `brokerMetadata` on `search_papers` responses to see which
+providers were attempted, which one produced the results, and whether
+Semantic Scholar-only filters narrowed the route.
 """.strip()
 
 AGENT_WORKFLOW_GUIDE = """
@@ -54,9 +56,10 @@ AGENT_WORKFLOW_GUIDE = """
 - Follow `brokerMetadata.providerUsed` to understand where results came from.
 - Follow `brokerMetadata.attemptedProviders` to see skipped, failed, or empty providers.
 - For paginated tools, treat `pagination.nextCursor` as opaque and reuse it unchanged.
-- Use `get_paper_details`, `get_paper_citations`, `get_paper_references`, and `get_paper_authors`
-  to expand from a paper you already found.
-- Use `search_authors`, `get_author_info`, and `get_author_papers` for author-centric workflows.
+- Use `get_paper_details`, `get_paper_citations`, `get_paper_references`,
+  and `get_paper_authors` to expand from a paper you already found.
+- Use `search_authors`, `get_author_info`, and `get_author_papers`
+  for author-centric workflows.
 """.strip()
 
 __all__ = [
@@ -102,7 +105,7 @@ __all__ = [
 ]
 
 
-def _tool_title(name: str) -> str:
+def _format_tool_display_name(name: str) -> str:
     return name.replace("_", " ").title()
 
 
@@ -156,16 +159,16 @@ def _register_tool(tool_name: str) -> None:
 
     _tool_impl.__name__ = tool_name
     _tool_impl.__doc__ = TOOL_DESCRIPTIONS[tool_name]
-    _tool_impl.__signature__ = signature
+    setattr(_tool_impl, "__signature__", signature)
     _tool_impl.__annotations__ = annotations
 
     app.tool(
         name=tool_name,
-        title=_tool_title(tool_name),
+        title=_format_tool_display_name(tool_name),
         description=TOOL_DESCRIPTIONS[tool_name],
         tags=_tool_tags(tool_name),
         annotations=ToolAnnotations(
-            title=_tool_title(tool_name),
+            title=_format_tool_display_name(tool_name),
             readOnlyHint=True,
             idempotentHint=True,
             openWorldHint=True,
@@ -228,11 +231,8 @@ def agent_workflows() -> str:
     description="Generate a tool-first plan for a literature search task.",
 )
 def plan_scholar_search(
-    topic: str = Field(description="Research topic or question."),
-    goal: str = Field(
-        default="find relevant papers, follow citations, and summarize next steps",
-        description="What the agent should accomplish with the search results.",
-    ),
+    topic: str,
+    goal: str = "find relevant papers, follow citations, and summarize next steps",
 ) -> str:
     """Create a reusable research workflow prompt for clients."""
     return (
@@ -243,13 +243,17 @@ def plan_scholar_search(
     )
 
 
-http_app = app.http_app(path=settings.http_path, transport="streamable-http")
+http_app_transport = cast(
+    Literal["http", "streamable-http", "sse"],
+    settings.transport if settings.transport != "stdio" else "streamable-http",
+)
+http_app = app.http_app(path=settings.http_path, transport=http_app_transport)
 
 
 async def list_tools() -> list[Tool]:
     """Compatibility helper returning the registered tool schemas."""
     return [
-        tool.to_mcp_tool() if hasattr(tool, "to_mcp_tool") else tool
+        cast(Tool, tool.to_mcp_tool() if hasattr(tool, "to_mcp_tool") else tool)
         for tool in await app.list_tools(run_middleware=False)
     ]
 

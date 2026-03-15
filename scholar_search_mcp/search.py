@@ -13,8 +13,21 @@ from .models import (
     SearchResponse,
     SemanticSearchResponse,
 )
+from .models.tools import SearchPapersArgs
 
 logger = logging.getLogger("scholar-search-mcp")
+
+SEMANTIC_SCHOLAR_ONLY_FIELDS = (
+    "publication_date_or_year",
+    "fields_of_study",
+    "publication_types",
+    "open_access_pdf",
+    "min_citation_count",
+)
+SEMANTIC_SCHOLAR_ONLY_FILTER_ALIASES = {
+    field_name: SearchPapersArgs.model_fields[field_name].alias or field_name
+    for field_name in SEMANTIC_SCHOLAR_ONLY_FIELDS
+}
 
 
 def _enrich_ss_paper(paper: Paper) -> Paper:
@@ -156,13 +169,13 @@ async def search_papers_with_fallback(
     (Semantic Scholar) or other provider-specific tools.
     """
     ss_only_filters = [
-        field_name
+        SEMANTIC_SCHOLAR_ONLY_FILTER_ALIASES[field_name]
         for field_name, value in (
-            ("publicationDateOrYear", publication_date_or_year),
-            ("fieldsOfStudy", fields_of_study),
-            ("publicationTypes", publication_types),
-            ("openAccessPdf", open_access_pdf),
-            ("minCitationCount", min_citation_count),
+            ("publication_date_or_year", publication_date_or_year),
+            ("fields_of_study", fields_of_study),
+            ("publication_types", publication_types),
+            ("open_access_pdf", open_access_pdf),
+            ("min_citation_count", min_citation_count),
         )
         if value is not None
     ]

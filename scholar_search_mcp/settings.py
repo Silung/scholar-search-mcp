@@ -2,7 +2,7 @@
 
 import os
 from collections.abc import Mapping
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -65,13 +65,15 @@ class AppSettings(BaseModel):
         )
 
 
-def cast_transport(value: str | None) -> Literal["stdio", "http", "streamable-http", "sse"]:
+def cast_transport(
+    value: str | None,
+) -> Literal["stdio", "http", "streamable-http", "sse"]:
     """Normalize the configured FastMCP transport."""
     if value is None or value == "":
         return "stdio"
     normalized = value.strip().lower()
     if normalized in {"stdio", "http", "streamable-http", "sse"}:
-        return normalized
+        return cast(Literal["stdio", "http", "streamable-http", "sse"], normalized)
     raise ValueError(
         "SCHOLAR_SEARCH_TRANSPORT must be one of: "
         "stdio, http, streamable-http, sse"

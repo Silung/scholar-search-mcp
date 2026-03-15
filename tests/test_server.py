@@ -2970,7 +2970,10 @@ async def test_fastmcp_client_returns_structured_tool_output(
     async with Client(server.app) as client:
         tools = await client.list_tools()
         tool_map = {tool.name: tool for tool in tools}
-        result = await client.call_tool("search_papers_match", {"query": "transformers"})
+        result = await client.call_tool(
+            "search_papers_match",
+            {"query": "transformers"},
+        )
 
     assert result.data == {"paperId": "match-1", "title": "Best match"}
     assert tool_map["search_papers"].annotations.readOnlyHint is True
