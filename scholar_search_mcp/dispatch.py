@@ -5,29 +5,126 @@ from typing import Any, Callable, cast
 from .models import TOOL_INPUT_MODELS, dump_jsonable
 from .models.tools import SearchPapersArgs
 from .search import search_papers_with_fallback
+from .utils.cursor import (
+    OFFSET_TOOLS,
+    PROVIDER,
+    SUPPORTED_VERSIONS,
+    compute_context_hash,
+    cursor_from_offset,
+    decode_cursor,
+    is_legacy_offset,
+)
 
 ToolArgBuilder = Callable[[dict[str, Any]], dict[str, Any]]
 
 
-def _cursor_to_offset(cursor: str | None) -> int | None:
+def _cursor_to_offset(
+    cursor: str | None,
+    tool: str | None = None,
+    context_hash: str | None = None,
+) -> int | None:
     """Decode an opaque pagination cursor to an integer offset.
 
+    Accepts both structured server-issued cursors (URL-safe base64 JSON) and
+    legacy plain integer strings for backward compatibility.
+
     Returns ``None`` when *cursor* is ``None`` (start from the beginning).
-    Raises ``ValueError`` for any non-``None`` string that is not a valid
-    integer so that stale, mis-typed, or cross-tool cursors produce an
-    explicit error instead of silently restarting pagination.
-    The cursor value is the string-encoded ``next`` integer returned by
-    Semantic Scholar's offset-based endpoints.
+
+    When *tool* is provided, structured cursors are validated to ensure they
+    were issued by the same tool.  When *context_hash* is also provided, the
+    cursor's embedded hash is compared against the current request's context,
+    so a cursor from a different query on the same tool is rejected.
+
+    In production all dispatch handlers pass *tool* and *context_hash*
+    explicitly.  Passing ``tool=None`` skips cross-tool validation; this is
+    intentional only for the ``cursor=None`` early-return path.
+
+    Raises ``ValueError`` for stale, mis-typed, corrupted, cross-tool, or
+    cross-query cursors, unsupported versions, unknown providers, and negative
+    integer offsets.
     """
     if cursor is None:
         return None
+    if is_legacy_offset(cursor):
+        offset = int(cursor)
+        if offset < 0:
+            raise ValueError(
+                f"Invalid pagination cursor {cursor!r}: offset must be non-negative. "
+                "code=INVALID_CURSOR. "
+                "Restart the request without a cursor."
+            )
+        return offset
+    # Structured cursor: decode and validate
     try:
-        return int(cursor)
-    except (ValueError, TypeError):
+        state = decode_cursor(cursor)
+    except ValueError:
         raise ValueError(
-            f"Invalid pagination cursor {cursor!r}: expected an integer string "
-            "produced by a previous response's pagination.nextCursor."
+            f"Invalid pagination cursor {cursor!r}: cannot be decoded. "
+            "code=INVALID_CURSOR. "
+            "Restart the request without a cursor."
         )
+    if state.provider != PROVIDER:
+        raise ValueError(
+            f"Invalid pagination cursor: cursor provider {state.provider!r} does not "
+            f"match expected provider {PROVIDER!r}. "
+            "code=INVALID_CURSOR. "
+            "Restart the request without a cursor."
+        )
+    if state.version not in SUPPORTED_VERSIONS:
+        raise ValueError(
+            f"Invalid pagination cursor: cursor version {state.version} is not "
+            f"supported (supported: {sorted(SUPPORTED_VERSIONS)}). "
+            "code=INVALID_CURSOR. "
+            "Restart the request without a cursor."
+        )
+    if tool is not None and state.tool != tool:
+        raise ValueError(
+            f"Invalid pagination cursor: cursor was issued by tool {state.tool!r} "
+            f"but is being used with tool {tool!r}. "
+            "code=INVALID_CURSOR. "
+            "Restart the request without a cursor."
+        )
+    if (
+        context_hash is not None
+        and state.context_hash is not None
+        and state.context_hash != context_hash
+    ):
+        raise ValueError(
+            "Invalid pagination cursor: cursor was issued for a different query "
+            "context and cannot be reused here. "
+            "code=INVALID_CURSOR. "
+            "Restart the request without a cursor."
+        )
+    return state.offset
+
+
+def _encode_next_cursor(
+    result: dict[str, Any],
+    tool: str,
+    context_hash: str | None = None,
+) -> dict[str, Any]:
+    """Re-encode a plain integer ``nextCursor`` in *result* as a structured cursor.
+
+    Operates on the serialized dict returned by ``dump_jsonable``.  The
+    ``pagination`` key is present on all offset-backed tool responses.
+
+    The *context_hash* is embedded into the new cursor so that future requests
+    can validate that the cursor belongs to the same query stream.
+
+    If ``pagination.nextCursor`` is already a structured (non-integer) cursor or
+    is ``None``, the result is returned unchanged.
+    """
+    pagination = result.get("pagination")
+    if not isinstance(pagination, dict):
+        return result
+    raw_cursor = pagination.get("nextCursor")
+    if raw_cursor is None:
+        return result
+    if is_legacy_offset(raw_cursor):
+        pagination["nextCursor"] = cursor_from_offset(
+            tool, int(raw_cursor), context_hash=context_hash
+        )
+    return result
 
 
 NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
@@ -71,7 +168,11 @@ NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
             "paper_id": a["paper_id"],
             "limit": a.get("limit", 100),
             "fields": a.get("fields"),
-            "offset": _cursor_to_offset(a.get("cursor")),
+            "offset": _cursor_to_offset(
+                a.get("cursor"),
+                "get_paper_citations",
+                context_hash=compute_context_hash("get_paper_citations", a),
+            ),
         },
     ),
     "get_paper_references": (
@@ -80,7 +181,11 @@ NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
             "paper_id": a["paper_id"],
             "limit": a.get("limit", 100),
             "fields": a.get("fields"),
-            "offset": _cursor_to_offset(a.get("cursor")),
+            "offset": _cursor_to_offset(
+                a.get("cursor"),
+                "get_paper_references",
+                context_hash=compute_context_hash("get_paper_references", a),
+            ),
         },
     ),
     "get_paper_authors": (
@@ -89,7 +194,11 @@ NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
             "paper_id": a["paper_id"],
             "limit": a.get("limit", 100),
             "fields": a.get("fields"),
-            "offset": _cursor_to_offset(a.get("cursor")),
+            "offset": _cursor_to_offset(
+                a.get("cursor"),
+                "get_paper_authors",
+                context_hash=compute_context_hash("get_paper_authors", a),
+            ),
         },
     ),
     "get_author_info": (
@@ -105,7 +214,11 @@ NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
             "author_id": a["author_id"],
             "limit": a.get("limit", 100),
             "fields": a.get("fields"),
-            "offset": _cursor_to_offset(a.get("cursor")),
+            "offset": _cursor_to_offset(
+                a.get("cursor"),
+                "get_author_papers",
+                context_hash=compute_context_hash("get_author_papers", a),
+            ),
             "publication_date_or_year": a.get("publication_date_or_year"),
         },
     ),
@@ -115,7 +228,11 @@ NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
             "query": a["query"],
             "limit": a.get("limit", 10),
             "fields": a.get("fields"),
-            "offset": _cursor_to_offset(a.get("cursor")),
+            "offset": _cursor_to_offset(
+                a.get("cursor"),
+                "search_authors",
+                context_hash=compute_context_hash("search_authors", a),
+            ),
         },
     ),
     "batch_get_authors": (
@@ -207,6 +324,11 @@ async def dispatch_tool(
         raise ValueError(f"Unknown tool: {name}") from exc
 
     validated_payload = TOOL_INPUT_MODELS[name].model_validate(arguments)
+    args_dict = validated_payload.model_dump(by_alias=False)
+    ctx_hash = compute_context_hash(name, args_dict) if name in OFFSET_TOOLS else None
     method = getattr(client, method_name)
-    result = await method(**build_args(validated_payload.model_dump(by_alias=False)))
-    return dump_jsonable(result)
+    result = await method(**build_args(args_dict))
+    serialized = dump_jsonable(result)
+    if name in OFFSET_TOOLS:
+        serialized = _encode_next_cursor(serialized, name, context_hash=ctx_hash)
+    return serialized
