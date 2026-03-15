@@ -280,7 +280,9 @@ async def search_papers_with_fallback(
     result: SearchResponse | None = None
     provider_used = "none"
     attempts: list[BrokerAttempt] = []
+    processed_providers = 0
     for index, provider in enumerate(effective_order):
+        processed_providers = index + 1
         skip_for_filters = _skip_for_ss_only_filters(provider, ss_only_filters)
         if skip_for_filters is not None:
             attempts.append(skip_for_filters)
@@ -426,7 +428,7 @@ async def search_papers_with_fallback(
     if provider_used != "none":
         attempts.extend(
             _earlier_result_attempt(provider)
-            for provider in effective_order[len(attempts) :]
+            for provider in effective_order[processed_providers:]
         )
         if result is not None:
             result.broker_metadata = _metadata(
