@@ -176,6 +176,11 @@ class CoreApiClient:
             if isinstance(journal, dict) and journal.get("title")
         )
 
+        core_id = str(result["id"]) if result.get("id") is not None else ""
+        doi = (result.get("doi") or "").strip()
+        paper_source_id = core_id or doi or None
+        paper_canonical_id = doi or core_id or None
+
         return dump_jsonable(
             Paper(
                 paperId=str(result.get("id", result.get("doi", ""))),
@@ -193,5 +198,7 @@ class CoreApiClient:
                 url=url,
                 pdfUrl=pdf_url,
                 source="core",
+                sourceId=paper_source_id,
+                canonicalId=paper_canonical_id,
             )
         )

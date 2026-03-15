@@ -7,11 +7,34 @@ from .models import (
     ArxivSearchResponse,
     BrokerMetadata,
     CoreSearchResponse,
+    Paper,
     SearchResponse,
     SemanticSearchResponse,
 )
 
 logger = logging.getLogger("scholar-search-mcp")
+
+
+def _enrich_ss_paper(paper: Paper) -> Paper:
+    """Return a copy of a Semantic Scholar paper enriched with provenance fields.
+
+    ``sourceId`` is the Semantic Scholar-native ``paperId`` hash.
+    ``canonicalId`` follows the documented priority order:
+    DOI > paperId > arXiv ID > sourceId.
+    """
+    external_ids: dict[str, Any] = (paper.model_extra or {}).get("externalIds") or {}
+    doi: str | None = external_ids.get("DOI") or None
+    arxiv_id: str | None = external_ids.get("ArXiv") or None
+    paper_id: str | None = paper.paper_id
+    source_id = paper_id
+    canonical_id: str | None = doi or paper_id or arxiv_id or source_id
+    return paper.model_copy(
+        update={
+            "source": paper.source or "semantic_scholar",
+            "source_id": source_id,
+            "canonical_id": canonical_id,
+        }
+    )
 
 
 def _dump_search_response(response: SearchResponse) -> dict[str, Any]:
@@ -37,10 +60,7 @@ def _merge_search_results(
     semantic_search = SemanticSearchResponse.model_validate(s2_response)
     arxiv_search = ArxivSearchResponse.model_validate(arxiv_response)
 
-    s2_data = [
-        paper.model_copy(update={"source": paper.source or "semantic_scholar"})
-        for paper in semantic_search.data
-    ]
+    s2_data = [_enrich_ss_paper(paper) for paper in semantic_search.data]
     arxiv_entries = list(arxiv_search.entries)
 
     seen_arxiv_ids = set()
@@ -166,9 +186,7 @@ async def search_papers_with_fallback(
                     total=semantic_search.total or len(semantic_search.data),
                     offset=semantic_search.offset,
                     data=[
-                        paper.model_copy(
-                            update={"source": paper.source or "semantic_scholar"}
-                        )
+                        _enrich_ss_paper(paper)
                         for paper in semantic_search.data[:limit]
                     ],
                     broker_metadata=BrokerMetadata(provider_used="semantic_scholar"),
