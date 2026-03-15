@@ -3097,3 +3097,203 @@ def test_serpapi_normalize_source_id_not_same_as_result_id_when_absent() -> None
     assert "scholarResultId" not in paper
     # Trying to use sourceId with get_paper_citation_formats would fail;
     # get_paper_citation_formats should only be called when scholarResultId exists.
+
+
+# ---------------------------------------------------------------------------
+# Routing spy test for get_paper_citation_formats
+# (mirrors the style of test_call_tool_routes_non_search_tools)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_call_tool_get_citation_formats_routes_to_serpapi_client_method(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """call_tool must route get_paper_citation_formats to
+    serpapi_client.get_citation_formats.
+
+    This is the routing-spy analog of test_call_tool_routes_non_search_tools for
+    the SerpApi-backed citation tool — verifying that dispatch correctly calls
+    the right client method with the correct arguments.
+    """
+
+    class RecordingSerpApiClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict]] = []
+
+        async def get_citation_formats(self, result_id: str) -> dict:
+            self.calls.append(("get_citation_formats", {"result_id": result_id}))
+            return {
+                "citations": [{"title": "MLA", "snippet": "Smith, A. 2023."}],
+                "links": [{"name": "BibTeX", "link": "https://scholar.google.com/bib/x"}],
+            }
+
+    spy = RecordingSerpApiClient()
+    monkeypatch.setattr(server, "enable_serpapi", True)
+    monkeypatch.setattr(server, "serpapi_client", spy)
+
+    await server.call_tool("get_paper_citation_formats", {"result_id": "route-spy-001"})
+
+    assert spy.calls == [
+        ("get_citation_formats", {"result_id": "route-spy-001"})
+    ], f"Unexpected calls: {spy.calls}"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end provenance fields test through call_tool("search_papers")
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_papers_serpapi_all_provenance_fields_in_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All provenance fields must survive the full call_tool('search_papers') pipeline.
+
+    Verifies that source, sourceId, canonicalId, scholarResultId, scholarClusterId,
+    and scholarCitesId are all present in the call_tool response when SerpApi is the
+    provider — not just in normalize_organic_result unit tests.
+    """
+    from scholar_search_mcp.clients.serpapi.normalize import normalize_organic_result
+
+    # Build a normalized result the same way the real client does
+    normalized = normalize_organic_result({
+        "title": "End-to-End Provenance Paper",
+        "result_id": "e2e-rid-001",
+        "link": "https://doi.org/10.9999/e2e",
+        "snippet": "Snippet text.",
+        "publication_info": {
+            "summary": "E2E Journal, 2023",
+            "authors": [{"name": "First Author"}, {"name": "Second Author"}],
+        },
+        "inline_links": {
+            "cited_by": {"total": 25, "cites_id": "cites-e2e"},
+            "versions": {"cluster_id": "cluster-e2e"},
+        },
+    })
+    assert normalized is not None  # guard so test failure is obvious
+
+    normalized_paper: dict[str, object] = normalized
+
+    class FakeSerpApiClient:
+        async def search(self, **kwargs) -> list[dict]:
+            return [normalized_paper]
+
+    monkeypatch.setattr(server, "enable_core", False)
+    monkeypatch.setattr(server, "enable_semantic_scholar", False)
+    monkeypatch.setattr(server, "enable_serpapi", True)
+    monkeypatch.setattr(server, "enable_arxiv", False)
+    monkeypatch.setattr(server, "serpapi_client", FakeSerpApiClient())
+
+    response = await server.call_tool("search_papers", {"query": "e2e provenance"})
+    payload = json.loads(response[0].text)
+
+    assert len(payload["data"]) == 1
+    paper = payload["data"][0]
+
+    # Provider identity
+    assert paper["source"] == "serpapi_google_scholar"
+    # sourceId: result_id wins in priority
+    assert paper["sourceId"] == "e2e-rid-001"
+    # canonicalId: DOI wins in priority
+    assert paper["canonicalId"] == "10.9999/e2e"
+    # Scholar extras preserved for follow-up tools
+    assert paper["scholarResultId"] == "e2e-rid-001"
+    assert paper["scholarClusterId"] == "cluster-e2e"
+    assert paper["scholarCitesId"] == "cites-e2e"
+    # Broker metadata
+    assert payload["brokerMetadata"]["providerUsed"] == "serpapi_google_scholar"
+    assert payload["brokerMetadata"]["continuationSupported"] is False
+
+
+# ---------------------------------------------------------------------------
+# SerpApi empty results fall through to arXiv
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_papers_serpapi_empty_results_fall_through_to_arxiv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When SerpApi returns an empty list, search_papers must try arXiv next.
+
+    Distinct from transient errors: the client succeeds but returns no papers.
+    The fallback chain must continue as if SerpApi was not available.
+    """
+
+    class EmptySerpApiClient:
+        async def search(self, **kwargs) -> list[dict]:
+            return []
+
+    class ArxivFallback:
+        async def search(self, **kwargs) -> dict:
+            return {
+                "totalResults": 1,
+                "entries": [
+                    {
+                        "paperId": "ax-empty-fallback",
+                        "title": "arXiv fallback",
+                        "source": "arxiv",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(server, "enable_core", False)
+    monkeypatch.setattr(server, "enable_semantic_scholar", False)
+    monkeypatch.setattr(server, "enable_serpapi", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "serpapi_client", EmptySerpApiClient())
+    monkeypatch.setattr(server, "arxiv_client", ArxivFallback())
+
+    response = await server.call_tool("search_papers", {"query": "empty results"})
+    payload = json.loads(response[0].text)
+
+    assert payload["data"][0]["paperId"] == "ax-empty-fallback"
+    assert payload["brokerMetadata"]["providerUsed"] == "arxiv"
+
+
+# ---------------------------------------------------------------------------
+# SerpApiQuotaError falls back to arXiv (treated as transient)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_papers_serpapi_quota_error_falls_back_to_arxiv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SerpApiQuotaError (HTTP 429) must be treated as transient and fall back to arXiv.
+
+    Quota exhaustion is a transient operational state, not a config/auth error;
+    arXiv must still be tried so the user gets useful results.
+    """
+    from scholar_search_mcp.clients.serpapi import SerpApiQuotaError
+
+    class QuotaSerpApiClient:
+        async def search(self, **kwargs) -> list[dict]:
+            raise SerpApiQuotaError("HTTP 429: quota exhausted")
+
+    class ArxivFallback:
+        async def search(self, **kwargs) -> dict:
+            return {
+                "totalResults": 1,
+                "entries": [
+                    {
+                        "paperId": "ax-quota-fallback",
+                        "title": "arXiv result",
+                        "source": "arxiv",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(server, "enable_core", False)
+    monkeypatch.setattr(server, "enable_semantic_scholar", False)
+    monkeypatch.setattr(server, "enable_serpapi", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "serpapi_client", QuotaSerpApiClient())
+    monkeypatch.setattr(server, "arxiv_client", ArxivFallback())
+
+    response = await server.call_tool("search_papers", {"query": "quota"})
+    payload = json.loads(response[0].text)
+
+    assert payload["data"][0]["paperId"] == "ax-quota-fallback"
+    assert payload["brokerMetadata"]["providerUsed"] == "arxiv"
