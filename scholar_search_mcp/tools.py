@@ -12,7 +12,8 @@ TOOL_DESCRIPTIONS = {
         "fieldsOfStudy, publicationTypes, openAccessPdf, minCitationCount. "
         "Returns a single page of results (no pagination). For large paginated "
         "retrieval use search_papers_bulk. "
-        "brokerMetadata.providerUsed identifies which provider supplied the results."
+        "brokerMetadata.providerUsed identifies which provider supplied the results, "
+        "and brokerMetadata.attemptedProviders explains skips, failures, and fallbacks."
     ),
     "search_papers_bulk": (
         "Paginated bulk paper search (Semantic Scholar) with advanced boolean "

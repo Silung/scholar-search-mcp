@@ -145,7 +145,7 @@ class PaperListArgs(PaperLookupArgs):
         default=None,
         description=(
             "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
+            "pagination.nextCursor (an opaque server-issued cursor). "
             "Omit to start from the beginning."
         ),
     )
@@ -167,7 +167,7 @@ class PaperAuthorsArgs(ToolArgsModel):
         default=None,
         description=(
             "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
+            "pagination.nextCursor (an opaque server-issued cursor). "
             "Omit to start from the beginning."
         ),
     )
@@ -192,7 +192,7 @@ class AuthorPapersArgs(AuthorInfoArgs):
         default=None,
         description=(
             "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
+            "pagination.nextCursor (an opaque server-issued cursor). "
             "Omit to start from the beginning."
         ),
     )
@@ -219,7 +219,7 @@ class AuthorSearchArgs(ToolArgsModel):
         default=None,
         description=(
             "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
+            "pagination.nextCursor (an opaque server-issued cursor). "
             "Omit to start from the beginning."
         ),
     )

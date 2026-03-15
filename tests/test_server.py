@@ -2929,6 +2929,121 @@ def test_app_settings_serpapi_enabled_via_env() -> None:
     assert settings.serpapi_api_key == "my-api-key"
 
 
+def test_app_settings_transport_defaults_to_stdio() -> None:
+    from scholar_search_mcp.settings import AppSettings
+
+    settings = AppSettings.from_env({})
+
+    assert settings.transport == "stdio"
+    assert settings.http_host == "127.0.0.1"
+    assert settings.http_port == 8000
+    assert settings.http_path == "/mcp"
+
+
+def test_app_settings_parses_http_transport_configuration() -> None:
+    from scholar_search_mcp.settings import AppSettings
+
+    settings = AppSettings.from_env(
+        {
+            "SCHOLAR_SEARCH_TRANSPORT": "streamable-http",
+            "SCHOLAR_SEARCH_HTTP_HOST": "0.0.0.0",
+            "SCHOLAR_SEARCH_HTTP_PORT": "9000",
+            "SCHOLAR_SEARCH_HTTP_PATH": "/api/mcp",
+        }
+    )
+
+    assert settings.transport == "streamable-http"
+    assert settings.http_host == "0.0.0.0"
+    assert settings.http_port == 9000
+    assert settings.http_path == "/api/mcp"
+
+
+@pytest.mark.asyncio
+async def test_fastmcp_client_returns_structured_tool_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastmcp import Client
+
+    semantic = RecordingSemanticClient()
+    monkeypatch.setattr(server, "client", semantic)
+
+    async with Client(server.app) as client:
+        tools = await client.list_tools()
+        tool_map = {tool.name: tool for tool in tools}
+        result = await client.call_tool("search_papers_match", {"query": "transformers"})
+
+    assert result.data == {"paperId": "match-1", "title": "Best match"}
+    assert tool_map["search_papers"].annotations.readOnlyHint is True
+    assert tool_map["search_papers"].annotations.idempotentHint is True
+    assert tool_map["search_papers"].annotations.openWorldHint is True
+
+
+@pytest.mark.asyncio
+async def test_fastmcp_resource_and_prompt_support_agent_onboarding() -> None:
+    from fastmcp import Client
+
+    async with Client(server.app) as client:
+        resources = await client.list_resources()
+        prompts = await client.list_prompts()
+        guide = await client.read_resource("guide://scholar-search/agent-workflows")
+        plan = await client.get_prompt(
+            "plan_scholar_search",
+            {"topic": "transformers"},
+        )
+
+    assert any(
+        str(resource.uri) == "guide://scholar-search/agent-workflows"
+        for resource in resources
+    )
+    assert any(prompt.name == "plan_scholar_search" for prompt in prompts)
+    assert "search_papers_bulk" in guide[0].text
+    assert "pagination.nextCursor" in plan.messages[0].content.text
+
+
+@pytest.mark.asyncio
+async def test_search_papers_broker_metadata_reports_attempts_and_filter_routing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    semantic = RecordingSemanticClient()
+
+    class EmptyCoreClient:
+        async def search(self, **kwargs) -> dict[str, Any]:
+            return {"total": 0, "entries": []}
+
+    class EmptyArxivClient:
+        async def search(self, **kwargs) -> dict[str, Any]:
+            return {"totalResults": 0, "entries": []}
+
+    monkeypatch.setattr(server, "core_client", EmptyCoreClient())
+    monkeypatch.setattr(server, "client", semantic)
+    monkeypatch.setattr(server, "arxiv_client", EmptyArxivClient())
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", True)
+    monkeypatch.setattr(server, "enable_arxiv", True)
+    monkeypatch.setattr(server, "enable_serpapi", False)
+
+    response = await server.call_tool(
+        "search_papers",
+        {
+            "query": "transformers",
+            "publicationDateOrYear": "2020:2024",
+        },
+    )
+    payload = _payload(response)
+    broker_meta = payload["brokerMetadata"]
+
+    assert broker_meta["providerUsed"] == "semantic_scholar"
+    assert broker_meta["semanticScholarOnlyFilters"] == ["publicationDateOrYear"]
+    assert broker_meta["recommendedPaginationTool"] == "search_papers_bulk"
+    assert broker_meta["attemptedProviders"][0]["provider"] == "core"
+    assert broker_meta["attemptedProviders"][0]["status"] == "skipped"
+    assert "Semantic Scholar-only filters" in broker_meta["attemptedProviders"][0][
+        "reason"
+    ]
+    assert broker_meta["attemptedProviders"][1]["provider"] == "semantic_scholar"
+    assert broker_meta["attemptedProviders"][1]["status"] == "returned_results"
+
+
 def test_citation_formats_response_model_serializes_correctly() -> None:
     """CitationFormatsResponse must serialize with camelCase aliases."""
     from scholar_search_mcp.models import CitationFormatsResponse

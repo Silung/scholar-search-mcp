@@ -1,8 +1,8 @@
 # Scholar Search MCP
 
-A MCP server that integrates the [CORE API v3](https://api.core.ac.uk/docs/v3), [Semantic Scholar API](https://www.semanticscholar.org/product/api), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), and optionally [SerpApi Google Scholar](https://serpapi.com/google-scholar-api) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
+A FastMCP-based MCP server that integrates the [CORE API v3](https://api.core.ac.uk/docs/v3), [Semantic Scholar API](https://www.semanticscholar.org/product/api), [arXiv API](https://info.arxiv.org/help/api/user-manual.html), and optionally [SerpApi Google Scholar](https://serpapi.com/google-scholar-api) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
 
-The package now uses Pydantic for tool inputs, settings, and normalized provider payloads, and the provider clients are organized as expandable subpackages under `scholar_search_mcp/clients/`.
+The package now uses FastMCP for tool/resource/prompt registration, Pydantic for strict tool inputs and normalized provider payloads, and provider clients organized as expandable subpackages under `scholar_search_mcp/clients/`.
 
 ## Features
 
@@ -18,6 +18,8 @@ The package now uses Pydantic for tool inputs, settings, and normalized provider
 - **Recommendations** – Similar papers via single-seed GET or multi-seed POST
 - **Citation formats** – Get MLA, APA, BibTeX, and other citation export formats for a Google Scholar paper (requires SerpApi)
 - **Shared rate limiter** – One 1 req/s pacing lock shared across all Semantic Scholar endpoints
+- **Structured FastMCP outputs** – Tools return structured content instead of JSON blobs embedded in text
+- **Agent onboarding aids** – Ships a workflow guide resource and a planning prompt alongside the tools
 
 ## Installation
 
@@ -130,6 +132,12 @@ When SerpApi supplies the results, the response looks like:
 }
 ```
 
+`brokerMetadata` now also exposes:
+
+- `attemptedProviders` - ordered provider decisions (`returned_results`, `returned_no_results`, `failed`, `skipped`)
+- `semanticScholarOnlyFilters` - which requested filters forced the broker to skip non-compatible providers
+- `recommendedPaginationTool` - currently always `search_papers_bulk` for exhaustive retrieval
+
 ### Enable/disable search channels
 
 Control which sources are used in the `search_papers` fallback chain via environment variables:
@@ -164,6 +172,26 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 }
 ```
 
+### Transport configuration
+
+The server defaults to local **stdio** transport, which is the recommended mode for desktop MCP clients. FastMCP also supports remote HTTP deployment:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SCHOLAR_SEARCH_TRANSPORT` | `stdio` | One of `stdio`, `http`, `streamable-http`, or `sse` |
+| `SCHOLAR_SEARCH_HTTP_HOST` | `127.0.0.1` | Host to bind when using an HTTP transport |
+| `SCHOLAR_SEARCH_HTTP_PORT` | `8000` | Port to bind when using an HTTP transport |
+| `SCHOLAR_SEARCH_HTTP_PATH` | `/mcp` | MCP endpoint path when using an HTTP transport |
+
+Example remote run:
+
+```bash
+SCHOLAR_SEARCH_TRANSPORT=streamable-http \
+SCHOLAR_SEARCH_HTTP_HOST=0.0.0.0 \
+SCHOLAR_SEARCH_HTTP_PORT=8000 \
+python -m scholar_search_mcp
+```
+
 ## Tools
 
 
@@ -186,6 +214,12 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 | `get_paper_recommendations_post` | Similar papers from positive and negative seed sets (POST multi-seed)                                    |
 | `batch_get_papers`               | Details for up to 500 paper IDs                                                                          |
 | `get_paper_citation_formats`     | Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar paper. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Pass `result_id=paper.scholarResultId` (not `paper.sourceId`) from a `serpapi_google_scholar` result. Single non-paginated response. |
+
+
+## Resources and prompts
+
+- Resource: `guide://scholar-search/agent-workflows` - compact onboarding guide for choosing tools and following pagination safely
+- Prompt: `plan_scholar_search` - reusable planning prompt for literature-search workflows
 
 
 ## Testing with MCP Inspector
