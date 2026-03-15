@@ -14,8 +14,8 @@ OPAQUE_CURSOR_CONTRACT = (
 TOOL_DESCRIPTIONS = {
     "search_papers": (
         "Primary entry point for quick literature discovery: start here when "
-        "the user asks for papers on a topic and needs one strong first page "
-        "fast. Best-effort paper search tries CORE → Semantic Scholar → "
+        "quick topic exploration needs one strong first page fast. Best-effort "
+        "paper search tries CORE → Semantic Scholar → "
         "SerpApi Google Scholar (opt-in, paid) → arXiv in order by default. "
         "Use preferredProvider to try one provider first, or providerOrder to "
         "override the broker chain for this call when source constraints matter. "

@@ -168,7 +168,7 @@ async def test_fastmcp_resource_and_prompt_support_agent_onboarding() -> None:
     )
 
 
-def test_primary_workflow_tool_descriptions_encode_intended_use() -> None:
+def test_tool_descriptions_include_workflow_guidance() -> None:
     from scholar_search_mcp.tools import TOOL_DESCRIPTIONS
 
     assert "quick literature discovery" in TOOL_DESCRIPTIONS["search_papers"]
@@ -178,4 +178,6 @@ def test_primary_workflow_tool_descriptions_encode_intended_use() -> None:
     assert "cite this paper (cited by)" in TOOL_DESCRIPTIONS["get_paper_citations"]
     assert "references this paper cites" in TOOL_DESCRIPTIONS["get_paper_references"]
     assert "author-centric workflow" in TOOL_DESCRIPTIONS["get_author_papers"].lower()
-    assert "special-purpose recovery tool" in TOOL_DESCRIPTIONS["search_snippets"].lower()
+    assert "special-purpose recovery tool" in TOOL_DESCRIPTIONS[
+        "search_snippets"
+    ].lower()
