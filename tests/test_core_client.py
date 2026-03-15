@@ -53,6 +53,7 @@ def test_core_result_to_paper_prefers_doi_url_and_normalizes_metadata() -> None:
         "source": "core",
         "sourceId": "42",
         "canonicalId": "10.1000/example-doi",
+        "scholarResultId": None,
     }
 
 

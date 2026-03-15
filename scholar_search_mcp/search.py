@@ -78,10 +78,29 @@ def _metadata(
     ss_only_filters: list[str],
 ) -> BrokerMetadata:
     """Build consistent broker metadata for ``search_papers`` responses."""
+    if provider_used == "serpapi_google_scholar":
+        next_step_hint = (
+            "Results are from SerpApi Google Scholar. Papers that include "
+            "scholarResultId can be passed to get_paper_citation_formats for "
+            "MLA, APA, BibTeX, and other export formats. "
+            "To get more pages use search_papers_bulk. "
+            "To expand from a paper use get_paper_citations or get_paper_references."
+        )
+    elif provider_used == "none":
+        next_step_hint = (
+            "No provider returned results. Try broadening the query, changing "
+            "providerOrder, or using search_papers_bulk with a different query."
+        )
+    else:
+        next_step_hint = (
+            "Inspect the results. To get more pages use search_papers_bulk. "
+            "To expand from a paper use get_paper_citations or get_paper_references."
+        )
     return BrokerMetadata(
         provider_used=provider_used,
         attempted_providers=attempts,
         semantic_scholar_only_filters=ss_only_filters,
+        next_step_hint=next_step_hint,
     )
 
 

@@ -158,12 +158,11 @@ def normalize_organic_result(result: dict[str, Any]) -> Optional[dict[str, Any]]
         source="serpapi_google_scholar",
         sourceId=source_id,
         canonicalId=canonical_id,
+        scholarResultId=result_id,
     )
-    # Preserve useful Scholar identifiers as extras so agents can use them
-    # for follow-up Scholar tools (e.g. get_paper_citation_formats).
+    # Preserve supplementary Scholar cluster/cite identifiers as extras for
+    # any downstream tool that may need them in the future.
     extra: dict[str, Any] = {}
-    if result_id:
-        extra["scholarResultId"] = result_id
     if cluster_id:
         extra["scholarClusterId"] = cluster_id
     if cites_id:

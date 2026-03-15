@@ -163,3 +163,98 @@ def test_citation_formats_response_model_serializes_correctly() -> None:
     assert dumped["provider"] == "serpapi_google_scholar"
     assert dumped["citations"][0]["title"] == "MLA"
     assert dumped["exportLinks"][0]["name"] == "BibTeX"
+
+
+def test_paper_scholar_result_id_is_first_class_field() -> None:
+    """Paper.scholarResultId must be a first-class schema field, not just an extra.
+
+    Agents rely on seeing scholarResultId in the schema to know they can pass it
+    to get_paper_citation_formats. This test guards against regressions where the
+    field is demoted back to an extra dict entry (invisible in schema).
+    """
+    from scholar_search_mcp.models.common import Paper
+
+    schema = Paper.model_json_schema()
+    props = schema.get("properties", {})
+
+    assert "scholarResultId" in props, (
+        "scholarResultId must be a first-class field in the Paper model schema "
+        "so agents can discover it without reading long tool descriptions."
+    )
+    field_schema = props["scholarResultId"]
+    description = field_schema.get("description", "")
+    assert description, (
+        "scholarResultId must have a non-empty description in the schema "
+        "so agents understand when to use it and which tool to pass it to."
+    )
+    assert "get_paper_citation_formats" in description, (
+        "scholarResultId description must mention get_paper_citation_formats "
+        "so agents can follow the citation export golden path."
+    )
+
+
+def test_paper_scholar_result_id_set_for_serpapi_results() -> None:
+    """Paper.scholarResultId must be set on SerpApi results and None otherwise."""
+    from scholar_search_mcp.models.common import Paper
+
+    # SerpApi result: scholarResultId set from result_id
+    serpapi_paper = Paper(
+        title="Test Paper",
+        source="serpapi_google_scholar",
+        scholarResultId="rid-abc",
+    )
+    assert serpapi_paper.scholar_result_id == "rid-abc"
+    dumped = serpapi_paper.model_dump(by_alias=True)
+    assert dumped["scholarResultId"] == "rid-abc"
+
+    # Non-SerpApi result: scholarResultId is None
+    core_paper = Paper(title="CORE Paper", source="core")
+    assert core_paper.scholar_result_id is None
+    core_dumped = core_paper.model_dump(by_alias=True)
+    assert core_dumped["scholarResultId"] is None
+
+
+def test_broker_metadata_next_step_hint_is_provider_specific() -> None:
+    """BrokerMetadata.nextStepHint must vary by provider to guide agents."""
+    from scholar_search_mcp.search import _metadata
+
+    serpapi_meta = _metadata(
+        provider_used="serpapi_google_scholar",
+        attempts=[],
+        ss_only_filters=[],
+    )
+    assert "scholarResultId" in serpapi_meta.next_step_hint
+    assert "get_paper_citation_formats" in serpapi_meta.next_step_hint
+
+    none_meta = _metadata(
+        provider_used="none",
+        attempts=[],
+        ss_only_filters=[],
+    )
+    assert "broaden" in none_meta.next_step_hint.lower()
+
+    ss_meta = _metadata(
+        provider_used="semantic_scholar",
+        attempts=[],
+        ss_only_filters=[],
+    )
+    assert "search_papers_bulk" in ss_meta.next_step_hint
+    assert "get_paper_citations" in ss_meta.next_step_hint
+
+
+def test_broker_metadata_next_step_hint_in_serialized_response() -> None:
+    """brokerMetadata.nextStepHint must appear in the serialized search response."""
+    from scholar_search_mcp.models.common import SearchResponse
+    from scholar_search_mcp.search import _dump_search_response, _metadata
+
+    meta = _metadata(
+        provider_used="semantic_scholar",
+        attempts=[],
+        ss_only_filters=[],
+    )
+    response = SearchResponse(total=1, offset=0, data=[], broker_metadata=meta)
+    serialized = _dump_search_response(response)
+
+    assert "brokerMetadata" in serialized
+    assert "nextStepHint" in serialized["brokerMetadata"]
+    assert serialized["brokerMetadata"]["nextStepHint"]
