@@ -1,6 +1,6 @@
 """Shared Pydantic models for request validation and normalized payloads."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
@@ -83,6 +83,27 @@ class BrokerMetadata(BaseModel):
         default=False,
         serialization_alias="continuationSupported",
     )
+    attempted_providers: list["BrokerAttempt"] = Field(
+        default_factory=list,
+        serialization_alias="attemptedProviders",
+    )
+    semantic_scholar_only_filters: list[str] = Field(
+        default_factory=list,
+        serialization_alias="semanticScholarOnlyFilters",
+    )
+    recommended_pagination_tool: str = Field(
+        default="search_papers_bulk",
+        serialization_alias="recommendedPaginationTool",
+    )
+
+
+class BrokerAttempt(BaseModel):
+    """One provider decision in the ``search_papers`` broker chain."""
+
+    model_config = ConfigDict(populate_by_name=True)
+    provider: str
+    status: Literal["returned_results", "returned_no_results", "failed", "skipped"]
+    reason: str | None = None
 
 
 class SearchResponse(ApiModel):

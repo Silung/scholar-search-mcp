@@ -9,6 +9,14 @@ class ToolArgsModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+OPAQUE_CURSOR_FIELD_DESCRIPTION = (
+    "Continuation cursor from a previous response's pagination.nextCursor "
+    "(an opaque server-issued cursor). Pass it back exactly as returned; do "
+    "not derive, edit, or fabricate it, and do not reuse it across a "
+    "different tool or query flow. Omit to start from the beginning."
+)
+
+
 def _clamp_limit(value: int | None, default: int, maximum: int) -> int:
     if value is None:
         return default
@@ -73,7 +81,9 @@ class BulkSearchPapersArgs(ToolArgsModel):
         default=None,
         description=(
             "Continuation cursor from a previous response's pagination.nextCursor "
-            "(a provider-issued token for bulk search). Omit to start a new search."
+            "(a provider-issued token for bulk search). Pass it back exactly as "
+            "returned; do not derive, edit, or fabricate it, and do not reuse it "
+            "across a different query flow. Omit to start a new search."
         ),
     )
     sort: str | None = Field(
@@ -143,11 +153,7 @@ class PaperListArgs(PaperLookupArgs):
     )
     cursor: str | None = Field(
         default=None,
-        description=(
-            "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
-            "Omit to start from the beginning."
-        ),
+        description=OPAQUE_CURSOR_FIELD_DESCRIPTION,
     )
 
     @field_validator("limit", mode="before")
@@ -165,11 +171,7 @@ class PaperAuthorsArgs(ToolArgsModel):
     )
     cursor: str | None = Field(
         default=None,
-        description=(
-            "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
-            "Omit to start from the beginning."
-        ),
+        description=OPAQUE_CURSOR_FIELD_DESCRIPTION,
     )
 
     @field_validator("limit", mode="before")
@@ -190,11 +192,7 @@ class AuthorPapersArgs(AuthorInfoArgs):
     )
     cursor: str | None = Field(
         default=None,
-        description=(
-            "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
-            "Omit to start from the beginning."
-        ),
+        description=OPAQUE_CURSOR_FIELD_DESCRIPTION,
     )
     publication_date_or_year: str | None = Field(
         default=None,
@@ -217,11 +215,7 @@ class AuthorSearchArgs(ToolArgsModel):
     )
     cursor: str | None = Field(
         default=None,
-        description=(
-            "Continuation cursor from a previous response's "
-            "pagination.nextCursor (a stringified integer offset). "
-            "Omit to start from the beginning."
-        ),
+        description=OPAQUE_CURSOR_FIELD_DESCRIPTION,
     )
 
     @field_validator("limit", mode="before")

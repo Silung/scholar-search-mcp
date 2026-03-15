@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Mapping
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -33,6 +34,10 @@ class AppSettings(BaseModel):
     enable_semantic_scholar: bool = True
     enable_arxiv: bool = True
     enable_serpapi: bool = False
+    transport: Literal["stdio", "http", "streamable-http", "sse"] = "stdio"
+    http_host: str = "127.0.0.1"
+    http_port: int = 8000
+    http_path: str = "/mcp"
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "AppSettings":
@@ -53,4 +58,23 @@ class AppSettings(BaseModel):
                 "SCHOLAR_SEARCH_ENABLE_SERPAPI",
                 False,
             ),
+            transport=cast_transport(env.get("SCHOLAR_SEARCH_TRANSPORT")),
+            http_host=env.get("SCHOLAR_SEARCH_HTTP_HOST", "127.0.0.1"),
+            http_port=int(env.get("SCHOLAR_SEARCH_HTTP_PORT", "8000")),
+            http_path=env.get("SCHOLAR_SEARCH_HTTP_PATH", "/mcp"),
         )
+
+
+def cast_transport(
+    value: str | None,
+) -> Literal["stdio", "http", "streamable-http", "sse"]:
+    """Normalize the configured FastMCP transport."""
+    if value is None or value == "":
+        return "stdio"
+    normalized = value.strip().lower()
+    if normalized in {"stdio", "http", "streamable-http", "sse"}:
+        return cast(Literal["stdio", "http", "streamable-http", "sse"], normalized)
+    raise ValueError(
+        "SCHOLAR_SEARCH_TRANSPORT must be one of: "
+        "stdio, http, streamable-http, sse"
+    )

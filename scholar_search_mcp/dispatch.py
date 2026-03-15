@@ -18,6 +18,11 @@ from .utils.cursor import (
 )
 
 ToolArgBuilder = Callable[[dict[str, Any]], dict[str, Any]]
+CURSOR_REUSE_HINT = (
+    "Pass pagination.nextCursor back exactly as returned. Do not derive, edit, "
+    "or fabricate cursors, and do not reuse them across a different tool or "
+    "different query context."
+)
 
 
 def _cursor_to_offset(
@@ -53,7 +58,7 @@ def _cursor_to_offset(
             raise ValueError(
                 f"Invalid pagination cursor {cursor!r}: offset must be non-negative. "
                 "code=INVALID_CURSOR. "
-                "Restart the request without a cursor."
+                f"{CURSOR_REUSE_HINT} Restart the request without a cursor."
             )
         return offset
     # Structured cursor: decode and validate
@@ -63,28 +68,28 @@ def _cursor_to_offset(
         raise ValueError(
             f"Invalid pagination cursor {cursor!r}: cannot be decoded. "
             "code=INVALID_CURSOR. "
-            "Restart the request without a cursor."
+            f"{CURSOR_REUSE_HINT} Restart the request without a cursor."
         )
     if state.provider != PROVIDER:
         raise ValueError(
             f"Invalid pagination cursor: cursor provider {state.provider!r} does not "
             f"match expected provider {PROVIDER!r}. "
             "code=INVALID_CURSOR. "
-            "Restart the request without a cursor."
+            f"{CURSOR_REUSE_HINT} Restart the request without a cursor."
         )
     if state.version not in SUPPORTED_VERSIONS:
         raise ValueError(
             f"Invalid pagination cursor: cursor version {state.version} is not "
             f"supported (supported: {sorted(SUPPORTED_VERSIONS)}). "
             "code=INVALID_CURSOR. "
-            "Restart the request without a cursor."
+            f"{CURSOR_REUSE_HINT} Restart the request without a cursor."
         )
     if tool is not None and state.tool != tool:
         raise ValueError(
             f"Invalid pagination cursor: cursor was issued by tool {state.tool!r} "
             f"but is being used with tool {tool!r}. "
             "code=INVALID_CURSOR. "
-            "Restart the request without a cursor."
+            f"{CURSOR_REUSE_HINT} Restart the request without a cursor."
         )
     if (
         context_hash is not None
@@ -95,7 +100,7 @@ def _cursor_to_offset(
             "Invalid pagination cursor: cursor was issued for a different query "
             "context and cannot be reused here. "
             "code=INVALID_CURSOR. "
-            "Restart the request without a cursor."
+            f"{CURSOR_REUSE_HINT} Restart the request without a cursor."
         )
     return state.offset
 

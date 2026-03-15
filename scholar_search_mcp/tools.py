@@ -4,6 +4,13 @@ from mcp.types import Tool
 
 from .models import TOOL_INPUT_MODELS
 
+OPAQUE_CURSOR_CONTRACT = (
+    "Treat pagination.nextCursor as an opaque server-issued token: pass it back "
+    "exactly as returned, do not derive, edit, or fabricate it, and do not reuse "
+    "it across a different tool or different query flow so pagination state "
+    "integrity stays bound to the stream that produced it."
+)
+
 TOOL_DESCRIPTIONS = {
     "search_papers": (
         "Best-effort paper search that tries CORE → Semantic Scholar → "
@@ -12,14 +19,16 @@ TOOL_DESCRIPTIONS = {
         "fieldsOfStudy, publicationTypes, openAccessPdf, minCitationCount. "
         "Returns a single page of results (no pagination). For large paginated "
         "retrieval use search_papers_bulk. "
-        "brokerMetadata.providerUsed identifies which provider supplied the results."
+        "brokerMetadata.providerUsed identifies which provider supplied the results, "
+        "and brokerMetadata.attemptedProviders explains skips, failures, and fallbacks."
     ),
     "search_papers_bulk": (
         "Paginated bulk paper search (Semantic Scholar) with advanced boolean "
         "query syntax. Supports sorting and up to 1,000 papers per call. "
         "Example first call: {query: 'transformers', limit: 100}. "
         "Use cursor=pagination.nextCursor from the response to fetch the next "
-        "page; hasMore signals when more results exist."
+        "page; hasMore signals when more results exist. "
+        f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "search_papers_match": (
         "Find the single paper whose title best matches the query string."
@@ -32,24 +41,29 @@ TOOL_DESCRIPTIONS = {
     ),
     "get_paper_citations": (
         "Get papers that cite this paper. "
-        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages."
+        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
+        f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_paper_references": (
         "Get references of this paper. "
-        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages."
+        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
+        f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_paper_authors": (
         "Get authors of a paper. "
-        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages."
+        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
+        f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_author_info": "Get author details.",
     "get_author_papers": (
         "Get papers by an author. "
-        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages."
+        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
+        f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "search_authors": (
         "Search for authors by name. "
-        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages."
+        "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
+        f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "batch_get_authors": "Get details for multiple authors at once (up to 1,000).",
     "search_snippets": (

@@ -1,45 +1,36 @@
-"""Runtime boot helpers for the MCP server."""
+"""Runtime boot helpers for the FastMCP server."""
 
 from typing import Any
 
+from .settings import AppSettings
 
-def run_server(
-    *,
-    app: Any,
-    logger: Any,
-    enable_core: bool,
-    enable_semantic_scholar: bool,
-    enable_arxiv: bool,
-    enable_serpapi: bool = False,
-    api_key: str | None,
-    core_api_key: str | None,
-    serpapi_api_key: str | None = None,
-) -> None:
-    """Run the MCP server over stdio."""
-    import anyio
-    from mcp.server.stdio import stdio_server
+LOCAL_HTTP_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
+
+def run_server(*, app: Any, logger: Any, settings: AppSettings) -> None:
+    """Run the MCP server over the configured FastMCP transport."""
     logger.info("Starting Scholar Search MCP Server...")
+    logger.info("FastMCP transport: %s", settings.transport)
     logger.info(
         "Search channels: CORE=%s, Semantic Scholar=%s, SerpApi=%s, arXiv=%s",
-        enable_core,
-        enable_semantic_scholar,
-        enable_serpapi,
-        enable_arxiv,
+        settings.enable_core,
+        settings.enable_semantic_scholar,
+        settings.enable_serpapi,
+        settings.enable_arxiv,
     )
-    if api_key:
+    if settings.semantic_scholar_api_key:
         logger.info("Semantic Scholar API key detected")
     else:
         logger.warning("No Semantic Scholar API key; using public rate limits")
-    if core_api_key:
+    if settings.core_api_key:
         logger.info("CORE API key set (search tries CORE first with higher limits)")
     else:
         logger.info(
             "No CORE API key; search still tries CORE first "
             "(subject to rate limits), then S2/arXiv"
         )
-    if enable_serpapi:
-        if serpapi_api_key:
+    if settings.enable_serpapi:
+        if settings.serpapi_api_key:
             logger.info("SerpApi Google Scholar enabled with API key")
         else:
             logger.warning(
@@ -52,12 +43,33 @@ def run_server(
             "SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY to enable)"
         )
 
-    async def arun() -> None:
-        async with stdio_server() as (read_stream, write_stream):
-            await app.run(
-                read_stream,
-                write_stream,
-                app.create_initialization_options(),
-            )
+    if settings.transport == "stdio":
+        app.run(transport="stdio")
+        return
 
-    anyio.run(arun)
+    logger.info(
+        "HTTP transports are currently intended for local/dev/integration use. "
+        "Before exposing the server remotely, add Origin validation, "
+        "authentication, and TLS via scholar_search_mcp.server.build_http_app(...) "
+        "or an enclosing ASGI app."
+    )
+    if settings.http_host not in LOCAL_HTTP_HOSTS:
+        logger.warning(
+            "Binding HTTP transport to %s. MCP HTTP guidance expects Origin "
+            "validation and recommends authentication before remote exposure.",
+            settings.http_host,
+        )
+
+    logger.info(
+        "Serving MCP over %s at http://%s:%s%s",
+        settings.transport,
+        settings.http_host,
+        settings.http_port,
+        settings.http_path,
+    )
+    app.run(
+        transport=settings.transport,
+        host=settings.http_host,
+        port=settings.http_port,
+        path=settings.http_path,
+    )
