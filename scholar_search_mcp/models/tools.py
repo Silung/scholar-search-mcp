@@ -32,6 +32,14 @@ SearchProvider = Literal[
     "arxiv",
 ]
 
+SEARCH_PROVIDER_ALIASES: dict[str, SearchProvider] = {
+    "core": "core",
+    "semantic_scholar": "semantic_scholar",
+    "serpapi": "serpapi_google_scholar",
+    "serpapi_google_scholar": "serpapi_google_scholar",
+    "arxiv": "arxiv",
+}
+
 DEFAULT_SEARCH_PROVIDER_ORDER: tuple[SearchProvider, ...] = (
     "core",
     "semantic_scholar",
@@ -40,8 +48,29 @@ DEFAULT_SEARCH_PROVIDER_ORDER: tuple[SearchProvider, ...] = (
 )
 
 
+def _supported_provider_names() -> str:
+    return ", ".join(SEARCH_PROVIDER_ALIASES)
+
+
+def _normalize_provider_name(value: object) -> SearchProvider:
+    if not isinstance(value, str):
+        raise ValueError(
+            "Provider names must be strings. Supported values: "
+            + _supported_provider_names()
+        )
+    normalized = value.strip().lower()
+    try:
+        return SEARCH_PROVIDER_ALIASES[normalized]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported provider {value!r}. Supported values: "
+            f"{_supported_provider_names()}. "
+            "Use `serpapi` or `serpapi_google_scholar` for the SerpApi provider."
+        ) from exc
+
+
 def _validate_provider_order(
-    value: list[SearchProvider] | None,
+    value: list[object] | None,
 ) -> list[SearchProvider] | None:
     if value is None:
         return None
@@ -49,14 +78,15 @@ def _validate_provider_order(
         raise ValueError("Provider order must contain at least one provider")
     seen: set[SearchProvider] = set()
     duplicates: list[SearchProvider] = []
-    for provider in value:
+    normalized_providers = [_normalize_provider_name(provider) for provider in value]
+    for provider in normalized_providers:
         if provider in seen:
             duplicates.append(provider)
         seen.add(provider)
     if duplicates:
         duplicate_text = ", ".join(duplicates)
         raise ValueError(f"Provider order cannot repeat providers: {duplicate_text}")
-    return value
+    return normalized_providers
 
 
 class SearchPapersBaseArgs(ToolArgsModel):
@@ -111,7 +141,8 @@ class SearchPapersArgs(SearchPapersBaseArgs):
         alias="preferredProvider",
         description=(
             "Optional provider to try first before continuing the broker fallback "
-            "chain. One of: core, semantic_scholar, serpapi_google_scholar, arxiv."
+            "chain. One of: core, semantic_scholar, serpapi, "
+            "serpapi_google_scholar, arxiv."
         ),
     )
     provider_order: list[SearchProvider] | None = Field(
@@ -120,14 +151,22 @@ class SearchPapersArgs(SearchPapersBaseArgs):
         description=(
             "Optional ordered provider chain override for this call. Defaults to "
             "core, semantic_scholar, serpapi_google_scholar, arxiv. Omit providers "
-            "to skip them for this request."
+            "to skip them for this request. `serpapi` is accepted as a shorthand "
+            "for `serpapi_google_scholar`."
         ),
     )
 
-    @field_validator("provider_order")
+    @field_validator("preferred_provider", mode="before")
+    @classmethod
+    def normalize_preferred_provider(cls, value: object) -> SearchProvider | None:
+        if value is None:
+            return None
+        return _normalize_provider_name(value)
+
+    @field_validator("provider_order", mode="before")
     @classmethod
     def validate_provider_order(
-        cls, value: list[SearchProvider] | None
+        cls, value: list[object] | None
     ) -> list[SearchProvider] | None:
         return _validate_provider_order(value)
 

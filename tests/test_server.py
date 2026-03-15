@@ -994,10 +994,46 @@ def test_app_settings_reads_provider_order_from_env() -> None:
     assert settings.provider_order == ("semantic_scholar", "arxiv")
 
 
+def test_app_settings_accepts_serpapi_alias_in_provider_order() -> None:
+    settings = AppSettings.from_env(
+        {"SCHOLAR_SEARCH_PROVIDER_ORDER": "semantic_scholar,serpapi,arxiv"}
+    )
+
+    assert settings.provider_order == (
+        "semantic_scholar",
+        "serpapi_google_scholar",
+        "arxiv",
+    )
+
+
 def test_app_settings_rejects_duplicate_provider_order_entries() -> None:
     with pytest.raises(ValueError, match="cannot repeat providers"):
         AppSettings.from_env(
             {"SCHOLAR_SEARCH_PROVIDER_ORDER": "core,core,semantic_scholar"}
+        )
+
+
+def test_search_papers_args_accept_serpapi_alias() -> None:
+    from scholar_search_mcp.models.tools import SearchPapersArgs
+
+    args = SearchPapersArgs.model_validate(
+        {
+            "query": "fallback",
+            "preferredProvider": "serpapi",
+            "providerOrder": ["core", "serpapi"],
+        }
+    )
+
+    assert args.preferred_provider == "serpapi_google_scholar"
+    assert args.provider_order == ["core", "serpapi_google_scholar"]
+
+
+@pytest.mark.asyncio
+async def test_search_papers_invalid_provider_name_has_clear_error() -> None:
+    with pytest.raises(Exception, match="Unsupported provider 'bogus'"):
+        await server.call_tool(
+            "search_papers",
+            {"query": "fallback", "preferredProvider": "bogus"},
         )
 
 

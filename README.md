@@ -111,6 +111,8 @@ context.
 - set `SCHOLAR_SEARCH_PROVIDER_ORDER` to override the default broker order for a deployment
 - use `search_papers_core`, `search_papers_semantic_scholar`, `search_papers_serpapi`, or `search_papers_arxiv` for single-provider searches
 
+Provider names accepted in `preferredProvider`, `providerOrder`, and `SCHOLAR_SEARCH_PROVIDER_ORDER` are `core`, `semantic_scholar`, `arxiv`, and either `serpapi` or `serpapi_google_scholar`. Broker metadata continues to report the SerpApi provider as `serpapi_google_scholar`.
+
 Every response includes a `brokerMetadata` field that makes this contract explicit:
 
 ```json
@@ -158,6 +160,10 @@ When SerpApi supplies the results, the response looks like:
 - `semanticScholarOnlyFilters` - which requested filters forced the broker to skip non-compatible providers
 - `recommendedPaginationTool` - currently always `search_papers_bulk` for exhaustive retrieval
 
+#### Provider order and filter-based skipping
+
+Provider order controls *which providers are eligible and in what order they are attempted*, but compatibility rules still apply. If you request Semantic Scholar-only filters such as `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, or `minCitationCount`, the broker will skip `core` and `serpapi(_google_scholar)` even if they appear earlier in `providerOrder`. Example: `providerOrder=["core","arxiv"]` with `publicationDateOrYear="2020:2024"` will skip CORE and continue to arXiv because CORE cannot honor that filter.
+
 ### Enable/disable search channels
 
 Control which sources are used in the `search_papers` fallback chain via environment variables:
@@ -169,7 +175,7 @@ Control which sources are used in the `search_papers` fallback chain via environ
 | `SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR` | `true`  | Use Semantic Scholar.                                                  |
 | `SCHOLAR_SEARCH_ENABLE_SERPAPI`          | `false` | Use SerpApi Google Scholar (opt-in, **paid**). Set `SERPAPI_API_KEY`.  |
 | `SCHOLAR_SEARCH_ENABLE_ARXIV`            | `true`  | Use arXiv (last-resort free fallback).                                 |
-| `SCHOLAR_SEARCH_PROVIDER_ORDER`          | `core,semantic_scholar,serpapi_google_scholar,arxiv` | Comma-separated default broker order for `search_papers`. Omit a provider to remove it from the default broker chain. |
+| `SCHOLAR_SEARCH_PROVIDER_ORDER`          | `core,semantic_scholar,serpapi_google_scholar,arxiv` | Comma-separated default broker order for `search_papers`. Omit a provider to remove it from the default broker chain. Accepts `serpapi` as a shorthand for `serpapi_google_scholar`. |
 
 SerpApi is disabled by default to prevent unexpected costs. When enabled without an API key, affected tool calls return a clear error rather than silently failing.
 
@@ -238,10 +244,10 @@ python -m scholar_search_mcp
 | Tool                             | Description                                                                                              |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `search_papers`                  | Single-page best-effort brokered search. Default order: CORE → Semantic Scholar → SerpApi Google Scholar → arXiv. Optional filters: `limit`, `fields`, `year`, `venue`, `preferredProvider`, `providerOrder`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount`. No pagination — for paginated retrieval use `search_papers_bulk`. |
-| `search_papers_core`             | Single-page CORE-only search with the same normalized response shape as `search_papers`. |
-| `search_papers_semantic_scholar` | Single-page Semantic Scholar-only search with the same normalized response shape as `search_papers`. |
-| `search_papers_serpapi`          | Single-page SerpApi Google Scholar-only search. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). |
-| `search_papers_arxiv`            | Single-page arXiv-only search with the same normalized response shape as `search_papers`. |
+| `search_papers_core`             | Single-page CORE-only search with the same normalized response shape as `search_papers`. Shared fields are accepted for schema consistency, but CORE only honors its native subset (`query`, `limit`, and `year`). |
+| `search_papers_semantic_scholar` | Single-page Semantic Scholar-only search with the same normalized response shape as `search_papers`. This is the provider-specific tool that honors the Semantic Scholar-only filters. |
+| `search_papers_serpapi`          | Single-page SerpApi Google Scholar-only search. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Shared fields are accepted for schema consistency, but SerpApi only honors its native subset (`query`, `limit`, and `year`). |
+| `search_papers_arxiv`            | Single-page arXiv-only search with the same normalized response shape as `search_papers`. Shared fields are accepted for schema consistency, but arXiv only honors its native subset (`query`, `limit`, and `year`). |
 | `search_papers_bulk`             | Paginated bulk paper search (Semantic Scholar) with advanced boolean query syntax (up to 1,000 papers/call). Treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and do not derive/edit/fabricate it; `pagination.hasMore` signals more results. |
 | `search_papers_match`            | Find the single paper whose title best matches the query string                                          |
 | `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |

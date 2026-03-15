@@ -16,9 +16,13 @@ TOOL_DESCRIPTIONS = {
         "Best-effort paper search that tries CORE → Semantic Scholar → "
         "SerpApi Google Scholar (opt-in, paid) → arXiv in order by default. "
         "Use preferredProvider to try one provider first, or providerOrder to "
-        "override the broker chain for this call. "
+        "override the broker chain for this call. Provider names accepted by "
+        "those arguments are core, semantic_scholar, arxiv, and either serpapi "
+        "or serpapi_google_scholar. "
         "Optional filters: year, venue, publicationDateOrYear, "
         "fieldsOfStudy, publicationTypes, openAccessPdf, minCitationCount. "
+        "Semantic Scholar-only filters still cause CORE and SerpApi to be "
+        "skipped even if they appear in providerOrder. "
         "Returns a single page of results (no pagination). For large paginated "
         "retrieval use search_papers_bulk. "
         "brokerMetadata.providerUsed identifies which provider supplied the results, "
@@ -27,23 +31,29 @@ TOOL_DESCRIPTIONS = {
     "search_papers_core": (
         "Search papers using CORE only. Returns a single page of results with the "
         "same normalized response shape as search_papers, but does not fall back "
-        "to other providers."
+        "to other providers. Shared search fields are accepted for schema "
+        "consistency, but CORE only honors query, limit, and year."
     ),
     "search_papers_semantic_scholar": (
         "Search papers using Semantic Scholar only. Returns a single page of "
         "results with the same normalized response shape as search_papers, but "
-        "does not fall back to other providers."
+        "does not fall back to other providers. This is the provider-specific "
+        "tool that honors publicationDateOrYear, fieldsOfStudy, publicationTypes, "
+        "openAccessPdf, and minCitationCount."
     ),
     "search_papers_serpapi": (
         "Search papers using SerpApi Google Scholar only. Requires "
         "SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY. Returns a "
         "single page of results with the same normalized response shape as "
-        "search_papers, but does not fall back to other providers."
+        "search_papers, but does not fall back to other providers. Shared "
+        "search fields are accepted for schema consistency, but SerpApi only "
+        "honors query, limit, and year."
     ),
     "search_papers_arxiv": (
         "Search papers using arXiv only. Returns a single page of results with "
         "the same normalized response shape as search_papers, but does not fall "
-        "back to other providers."
+        "back to other providers. Shared search fields are accepted for schema "
+        "consistency, but arXiv only honors query, limit, and year."
     ),
     "search_papers_bulk": (
         "Paginated bulk paper search (Semantic Scholar) with advanced boolean "

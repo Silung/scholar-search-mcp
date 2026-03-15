@@ -6,7 +6,11 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
-from .models.tools import DEFAULT_SEARCH_PROVIDER_ORDER, SearchProvider
+from .models.tools import (
+    DEFAULT_SEARCH_PROVIDER_ORDER,
+    SearchProvider,
+    _normalize_provider_name,
+)
 
 
 def _env_bool(key: str, default: bool = True) -> bool:
@@ -38,29 +42,21 @@ def _parse_provider_order(
             f"{key} must list at least one provider when it is set."
         )
 
-    invalid = [
-        provider
+    normalized_providers = [
+        _normalize_provider_name(provider)
         for provider in providers
-        if provider not in DEFAULT_SEARCH_PROVIDER_ORDER
     ]
-    if invalid:
-        allowed = ", ".join(DEFAULT_SEARCH_PROVIDER_ORDER)
-        invalid_text = ", ".join(invalid)
-        raise ValueError(
-            f"{key} contains unsupported providers: {invalid_text}. "
-            f"Supported providers: {allowed}."
-        )
 
     duplicates = [
         provider
-        for index, provider in enumerate(providers)
-        if provider in providers[:index]
+        for index, provider in enumerate(normalized_providers)
+        if provider in normalized_providers[:index]
     ]
     if duplicates:
         duplicate_text = ", ".join(duplicates)
         raise ValueError(f"{key} cannot repeat providers: {duplicate_text}")
 
-    return tuple(cast(SearchProvider, provider) for provider in providers)
+    return tuple(cast(SearchProvider, provider) for provider in normalized_providers)
 
 
 class AppSettings(BaseModel):
