@@ -9,58 +9,157 @@ from .search import search_papers_with_fallback
 ToolArgBuilder = Callable[[dict[str, Any]], dict[str, Any]]
 
 
+def _cursor_to_offset(cursor: str | None) -> int | None:
+    """Decode an opaque pagination cursor to an integer offset.
+
+    Returns ``None`` when *cursor* is ``None`` (start from the beginning).
+    Raises ``ValueError`` for any non-``None`` string that is not a valid
+    integer so that stale, mis-typed, or cross-tool cursors produce an
+    explicit error instead of silently restarting pagination.
+    The cursor value is the string-encoded ``next`` integer returned by
+    Semantic Scholar's offset-based endpoints.
+    """
+    if cursor is None:
+        return None
+    try:
+        return int(cursor)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"Invalid pagination cursor {cursor!r}: expected an integer string "
+            "produced by a previous response's pagination.nextCursor."
+        )
+
+
 NON_SEARCH_TOOL_HANDLERS: dict[str, tuple[str, ToolArgBuilder]] = {
+    "search_papers_bulk": (
+        "search_papers_bulk",
+        lambda a: {
+            "query": a["query"],
+            "fields": a.get("fields"),
+            "token": a.get("cursor"),
+            "sort": a.get("sort"),
+            "limit": a.get("limit", 100),
+            "year": a.get("year"),
+            "publication_date_or_year": a.get("publication_date_or_year"),
+            "fields_of_study": a.get("fields_of_study"),
+            "publication_types": a.get("publication_types"),
+            "open_access_pdf": a.get("open_access_pdf"),
+            "min_citation_count": a.get("min_citation_count"),
+        },
+    ),
+    "search_papers_match": (
+        "search_papers_match",
+        lambda a: {
+            "query": a["query"],
+            "fields": a.get("fields"),
+        },
+    ),
+    "paper_autocomplete": (
+        "paper_autocomplete",
+        lambda a: {"query": a["query"]},
+    ),
     "get_paper_details": (
         "get_paper_details",
-        lambda arguments: {
-            "paper_id": arguments["paper_id"],
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "paper_id": a["paper_id"],
+            "fields": a.get("fields"),
         },
     ),
     "get_paper_citations": (
         "get_paper_citations",
-        lambda arguments: {
-            "paper_id": arguments["paper_id"],
-            "limit": arguments.get("limit", 100),
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "paper_id": a["paper_id"],
+            "limit": a.get("limit", 100),
+            "fields": a.get("fields"),
+            "offset": _cursor_to_offset(a.get("cursor")),
         },
     ),
     "get_paper_references": (
         "get_paper_references",
-        lambda arguments: {
-            "paper_id": arguments["paper_id"],
-            "limit": arguments.get("limit", 100),
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "paper_id": a["paper_id"],
+            "limit": a.get("limit", 100),
+            "fields": a.get("fields"),
+            "offset": _cursor_to_offset(a.get("cursor")),
+        },
+    ),
+    "get_paper_authors": (
+        "get_paper_authors",
+        lambda a: {
+            "paper_id": a["paper_id"],
+            "limit": a.get("limit", 100),
+            "fields": a.get("fields"),
+            "offset": _cursor_to_offset(a.get("cursor")),
         },
     ),
     "get_author_info": (
         "get_author_info",
-        lambda arguments: {
-            "author_id": arguments["author_id"],
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "author_id": a["author_id"],
+            "fields": a.get("fields"),
         },
     ),
     "get_author_papers": (
         "get_author_papers",
-        lambda arguments: {
-            "author_id": arguments["author_id"],
-            "limit": arguments.get("limit", 100),
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "author_id": a["author_id"],
+            "limit": a.get("limit", 100),
+            "fields": a.get("fields"),
+            "offset": _cursor_to_offset(a.get("cursor")),
+            "publication_date_or_year": a.get("publication_date_or_year"),
+        },
+    ),
+    "search_authors": (
+        "search_authors",
+        lambda a: {
+            "query": a["query"],
+            "limit": a.get("limit", 10),
+            "fields": a.get("fields"),
+            "offset": _cursor_to_offset(a.get("cursor")),
+        },
+    ),
+    "batch_get_authors": (
+        "batch_get_authors",
+        lambda a: {
+            "author_ids": a["author_ids"],
+            "fields": a.get("fields"),
+        },
+    ),
+    "search_snippets": (
+        "search_snippets",
+        lambda a: {
+            "query": a["query"],
+            "limit": a.get("limit", 10),
+            "fields": a.get("fields"),
+            "year": a.get("year"),
+            "publication_date_or_year": a.get("publication_date_or_year"),
+            "fields_of_study": a.get("fields_of_study"),
+            "min_citation_count": a.get("min_citation_count"),
+            "venue": a.get("venue"),
         },
     ),
     "get_paper_recommendations": (
         "get_recommendations",
-        lambda arguments: {
-            "paper_id": arguments["paper_id"],
-            "limit": arguments.get("limit", 10),
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "paper_id": a["paper_id"],
+            "limit": a.get("limit", 10),
+            "fields": a.get("fields"),
+        },
+    ),
+    "get_paper_recommendations_post": (
+        "get_recommendations_post",
+        lambda a: {
+            "positive_paper_ids": a["positive_paper_ids"],
+            "negative_paper_ids": a.get("negative_paper_ids"),
+            "limit": a.get("limit", 10),
+            "fields": a.get("fields"),
         },
     ),
     "batch_get_papers": (
         "batch_get_papers",
-        lambda arguments: {
-            "paper_ids": arguments["paper_ids"],
-            "fields": arguments.get("fields"),
+        lambda a: {
+            "paper_ids": a["paper_ids"],
+            "fields": a.get("fields"),
         },
     ),
 }
@@ -89,6 +188,11 @@ async def dispatch_tool(
             year=validated_arguments.year,
             fields=validated_arguments.fields,
             venue=validated_arguments.venue,
+            publication_date_or_year=validated_arguments.publication_date_or_year,
+            fields_of_study=validated_arguments.fields_of_study,
+            publication_types=validated_arguments.publication_types,
+            open_access_pdf=validated_arguments.open_access_pdf,
+            min_citation_count=validated_arguments.min_citation_count,
             enable_core=enable_core,
             enable_semantic_scholar=enable_semantic_scholar,
             enable_arxiv=enable_arxiv,
@@ -104,5 +208,5 @@ async def dispatch_tool(
 
     validated_payload = TOOL_INPUT_MODELS[name].model_validate(arguments)
     method = getattr(client, method_name)
-    result = await method(**build_args(validated_payload.model_dump()))
+    result = await method(**build_args(validated_payload.model_dump(by_alias=False)))
     return dump_jsonable(result)

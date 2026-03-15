@@ -89,10 +89,37 @@ async def search_papers_with_fallback(
     core_client: Any,
     semantic_client: Any,
     arxiv_client: Any,
+    publication_date_or_year: Optional[str] = None,
+    fields_of_study: Optional[str] = None,
+    publication_types: Optional[str] = None,
+    open_access_pdf: Optional[bool] = None,
+    min_citation_count: Optional[int] = None,
 ) -> dict[str, Any]:
-    """Execute the CORE -> Semantic Scholar -> arXiv search fallback chain."""
+    """Execute the CORE -> Semantic Scholar -> arXiv search fallback chain.
+
+    CORE is skipped when any Semantic Scholar-only filter is requested
+    (``publicationDateOrYear``, ``fieldsOfStudy``, ``publicationTypes``,
+    ``openAccessPdf``, ``minCitationCount``) because CORE does not support those
+    parameters, and silently returning un-filtered CORE results would violate the
+    caller's intent.
+
+    Pagination is intentionally not supported here: each provider uses a different
+    continuation mechanism and mixing pages from different backends would produce
+    incorrect results.  For paginated retrieval use ``search_papers_bulk``
+    (Semantic Scholar) or other provider-specific tools.
+    """
+    has_ss_only_filter = any(
+        (
+            publication_date_or_year is not None,
+            fields_of_study is not None,
+            publication_types is not None,
+            open_access_pdf is not None,
+            min_citation_count is not None,
+        )
+    )
+
     result: SearchResponse | None = None
-    if enable_core:
+    if enable_core and not has_ss_only_filter:
         try:
             core_response = await core_client.search(
                 query=query,
@@ -122,6 +149,11 @@ async def search_papers_with_fallback(
                 fields=fields,
                 year=year,
                 venue=venue,
+                publication_date_or_year=publication_date_or_year,
+                fields_of_study=fields_of_study,
+                publication_types=publication_types,
+                open_access_pdf=open_access_pdf,
+                min_citation_count=min_citation_count,
             )
             semantic_search = SemanticSearchResponse.model_validate(s2_response)
             if semantic_search.data:
