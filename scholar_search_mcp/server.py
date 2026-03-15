@@ -39,57 +39,58 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scholar-search-mcp")
 
 SERVER_INSTRUCTIONS = """
-Use `search_papers` as the default first tool for quick literature discovery.
-Use `search_papers_bulk` when the user wants exhaustive retrieval, the first N
-results across pages, or any multi-page collection workflow.
-Use `search_papers_match` or `get_paper_details` for known-item lookup from a
-messy title, DOI, ArXiv ID, URL, or canonical paper identifier.
-Use `get_paper_citations` for cited-by expansion and `get_paper_references` for
-backward reference expansion when mapping a paper's neighborhood.
-Use `search_authors` → `get_author_info` → `get_author_papers` for author-first
-research, and `search_snippets` only as a recovery tool when quote or phrase
-search is needed and title/keyword search is weak.
-Set `preferredProvider` or `providerOrder` on `search_papers` when you need to
-steer the broker, or use provider-specific `search_papers_*` tools when you
-want a single source only.
-For every paginated tool, treat `pagination.nextCursor` as opaque: pass it
-back as `cursor` exactly as returned, do not derive, edit, or fabricate it,
-and do not reuse it across a different tool or query flow.
-Inspect `brokerMetadata` on `search_papers` responses to see which providers
-were attempted, which one produced the results, and whether Semantic
-Scholar-only filters narrowed the route.
+Decision tree for tool selection:
+
+1. QUICK DISCOVERY → search_papers (brokered, single page, returns brokerMetadata)
+2. EXHAUSTIVE / MULTI-PAGE → search_papers_bulk (cursor-paginated, up to 1 000/call)
+3. KNOWN ITEM (messy title) → search_papers_match
+4. KNOWN ITEM (DOI / arXiv / URL) → get_paper_details
+5. CITATION EXPANSION → get_paper_citations (cited-by) or get_paper_references (refs)
+6. AUTHOR PIVOT → search_authors → get_author_info → get_author_papers
+7. PHRASE / QUOTE RECOVERY → search_snippets (last resort)
+
+After search_papers: read brokerMetadata.nextStepHint for the recommended next move.
+To steer the broker: use preferredProvider (try-first) or providerOrder (full override).
+Provider names: core, semantic_scholar, arxiv, serpapi / serpapi_google_scholar.
+
+Pagination rule: treat pagination.nextCursor as opaque — pass it back exactly as
+returned, do not derive, edit, or fabricate it, and do not reuse it across a
+different tool or query flow.
 """.strip()
 
 AGENT_WORKFLOW_GUIDE = """
 # Scholar Search agent workflow guide
 
-- Keep the starting surface small in low-context agents: prefer `search_papers`
-  for topic search, `search_papers_bulk` for exhaustive retrieval, and
-  `search_papers_match` / `get_paper_details` for known-item lookup.
-- Quick literature discovery: start with `search_papers` when you want one
-  best-effort page quickly, then inspect `brokerMetadata.providerUsed` and
-  `brokerMetadata.attemptedProviders` to decide whether to broaden, narrow,
-  paginate, or pivot providers.
-- Budget-aware or source-aware search: set `preferredProvider` or
-  `providerOrder` on `search_papers` when you want to steer the broker without
-  leaving the generic tool. Use `search_papers_core`,
-  `search_papers_semantic_scholar`, `search_papers_serpapi`, or
-  `search_papers_arxiv` only when you need a provider-specific result surface.
-- Exhaustive retrieval: switch to `search_papers_bulk` when the user asks for
-  many papers, all pages, or the first N results across pages.
-- Citation chasing: use `get_paper_citations` for cited-by expansion,
-  `get_paper_references` for backward references, and `get_paper_authors` when
-  you want to pivot from a paper into an author network.
-- Known-item lookup: use `search_papers_match` for messy or partial titles and
-  `get_paper_details` for DOI, arXiv ID, URL, or canonical IDs.
-- Author-centric workflows: use `search_authors`, `get_author_info`, and
-  `get_author_papers` when the user is exploring an author's work or collaborators.
-- Quote or snippet validation: use `search_snippets` as a special-purpose
-  recovery tool when title or keyword search is weak.
-- Citation export: use `get_paper_citation_formats` after discovery when you
-  have a SerpApi Google Scholar result with `paper.scholarResultId`.
-- For paginated tools, treat `pagination.nextCursor` as opaque, pass it back
-  exactly as returned, and do not derive, edit, fabricate, or cross-reuse it.
+## Quick decision tree
+
+- **Quick literature discovery**: `search_papers` → inspect
+  `brokerMetadata.nextStepHint` to decide whether to broaden, narrow,
+  paginate, or pivot.
+- **Exhaustive / multi-page retrieval**: `search_papers_bulk` with cursor loop until
+  `pagination.hasMore` is false.
+- **Known-item lookup (messy title)**: `search_papers_match`
+- **Known-item lookup (DOI / arXiv / URL / S2 ID)**: `get_paper_details`
+- **Citation chasing (cited-by expansion)**: `get_paper_citations`
+- **Citation chasing (backward references)**: `get_paper_references`
+- **Author-centric workflows**: `search_authors` → `get_author_info` →
+  `get_author_papers`; pivot to `get_paper_authors` if starting from a paper.
+- **Quote or snippet validation**: `search_snippets` — special-purpose recovery
+  tool only when title/keyword search is weak.
+- **Citation export**: `get_paper_citation_formats` — pass
+  `result_id=paper.scholarResultId` (not `paper.sourceId`) from any
+  `serpapi_google_scholar` result to get MLA, APA, BibTeX, etc.
+
+## Provider steering
+
+Set `preferredProvider` on `search_papers` to try one provider first while keeping
+the fallback chain. Set `providerOrder` to override the full broker chain for one
+call. Use `search_papers_core`, `search_papers_semantic_scholar`,
+`search_papers_serpapi`, or `search_papers_arxiv` for single-source searches.
+
+## Pagination contract
+
+For every paginated tool: treat `pagination.nextCursor` as opaque, pass it back
+exactly as returned, and do not derive, edit, fabricate, or cross-reuse it.
 """.strip()
 
 __all__ = [
@@ -287,19 +288,22 @@ def plan_scholar_search(
     """Create a reusable research workflow prompt for clients."""
     return (
         f"You are planning a scholar-search workflow about '{topic}'. Goal: {goal}. "
-        "Start with search_papers for quick literature discovery, inspect "
-        "brokerMetadata, and decide whether to broaden, narrow, paginate, pivot "
-        "providers, or pivot into authors. If the task is exhaustive retrieval, "
-        "first N results, or multi-page collection, use search_papers_bulk. If "
-        "the task is known-item lookup, use search_papers_match for messy titles "
-        "and get_paper_details for DOI, arXiv ID, URL, or canonical IDs. If the "
-        "task starts from a known paper, use get_paper_citations for cited-by "
+        "Start with search_papers for quick literature discovery, then read "
+        "brokerMetadata.nextStepHint to decide whether to broaden, narrow, paginate, "
+        "pivot providers, or pivot into authors. "
+        "If the task is exhaustive retrieval, first N results, or multi-page "
+        "collection, use search_papers_bulk. "
+        "If the task is known-item lookup, use search_papers_match for messy titles "
+        "and get_paper_details for DOI, arXiv ID, URL, or canonical IDs. "
+        "If the task starts from a known paper, use get_paper_citations for cited-by "
         "expansion and get_paper_references for backward references, and explain "
-        "that direction clearly. For author-centric workflows use search_authors, "
-        "get_author_info, and get_author_papers. Use search_snippets only as a "
-        "special-purpose recovery tool when quote or phrase search is needed and "
-        "title/keyword search is weak. Use preferredProvider/providerOrder or "
-        "provider-specific search_papers_* tools only when source choice matters. "
+        "that direction clearly. "
+        "For author-centric workflows use search_authors, get_author_info, and "
+        "get_author_papers. "
+        "Use search_snippets only as a special-purpose recovery tool when quote or "
+        "phrase search is needed and title/keyword search is weak. "
+        "Use preferredProvider/providerOrder or provider-specific search_papers_* "
+        "tools only when source choice matters. "
         "Treat pagination.nextCursor as opaque: reuse it exactly as returned, do "
         "not edit or fabricate it, and keep it scoped to the tool/query flow that "
         "produced it."

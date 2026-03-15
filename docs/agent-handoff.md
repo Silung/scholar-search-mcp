@@ -12,8 +12,8 @@ This document is the current working handoff for the fork. It is intended to giv
 - `scholar_search_mcp/server.py` is now a compatibility facade over smaller modules.
 - Agent-facing workflow guidance now prioritizes quick discovery, exhaustive retrieval,
   citation chasing, known-item lookup, and author pivots.
-- `docs/golden-paths.md` records the primary personas, golden paths, and success
-  signals for future agent work.
+- `docs/golden-paths.md` records the primary personas, golden paths, concrete example
+  flows, and success signals for future agent work.
 - `.github/copilot-instructions.md` now gives GitHub-native guidance for Copilot
   and the GitHub cloud coding agent so repo planning expectations are durable
   outside the runtime MCP surface.
@@ -28,6 +28,7 @@ This document is the current working handoff for the fork. It is intended to giv
 - `scholar_search_mcp/runtime.py` owns stdio startup.
 - `scholar_search_mcp/settings.py` contains environment parsing helpers.
 - `scholar_search_mcp/clients/` contains provider clients for CORE, Semantic Scholar, and arXiv.
+- `scholar_search_mcp/models/common.py` contains shared Pydantic models including `Paper` (with `scholarResultId`).
 - `scholar_search_mcp/parsing.py`, `scholar_search_mcp/constants.py`, and `scholar_search_mcp/transport.py` hold shared helper code and compatibility imports.
 
 ## Validation Commands
@@ -49,30 +50,30 @@ python -m bandit -c pyproject.toml -r scholar_search_mcp
 
 ## What Was Added In This Pass
 
-- README JSON examples were corrected so users can paste them directly into Claude Desktop config without breaking JSON parsing.
-- A CI workflow was added at `.github/workflows/validate.yml` to run the same validation stack on push and pull request.
-- Tests were expanded around `CoreApiClient._result_to_paper()` to cover DOI precedence, nested download URL variants, source URL schema variation, metadata normalization, and invalid-result rejection.
-- `scholar_search_mcp/server.py` was split into smaller modules while keeping the public facade stable for tests and entrypoints.
-- MCP tool routing now uses a dispatch map instead of a long `if`/`elif` chain.
-- Tool descriptions, server instructions, onboarding resource text, and the
-  planning prompt now encode the primary research workflows more explicitly.
-- `README.md` now calls out the default discovery, bulk, known-item, citation,
-  and snippet paths for agents.
-- `docs/golden-paths.md` now captures planning assumptions, workflow success
-  signals, and future workflow-oriented follow-up work.
-- `.github/copilot-instructions.md` now tells GitHub Copilot / cloud coding
-  agents which docs to read first, which workflows to preserve, and which
-  validation commands to run.
+- `Paper.scholarResultId` is now a first-class model field (not just an extra). This
+  makes it visible in the JSON schema so agents can discover it without reading long
+  tool descriptions. The field is always `None` for non-SerpApi results.
+- `BrokerMetadata.nextStepHint` was added as a new field. The `_metadata()` helper
+  in `search.py` now populates it with provider-specific guidance:
+  - For `serpapi_google_scholar` results: hints that `paper.scholarResultId` can be
+    passed to `get_paper_citation_formats`.
+  - For "none" results: hints to broaden the query or try `search_papers_bulk`.
+  - For all other results: hints to use `search_papers_bulk` or citation expansion.
+- `SERVER_INSTRUCTIONS` was restructured as a numbered decision tree for faster
+  agent scanning: QUICK DISCOVERY → EXHAUSTIVE → KNOWN ITEM → CITATION → AUTHOR → SNIPPET.
+- `AGENT_WORKFLOW_GUIDE` was rewritten with a quick-decision-table format under
+  `guide://scholar-search/agent-workflows`.
+- `plan_scholar_search` prompt was updated to reference `brokerMetadata.nextStepHint`.
+- `docs/golden-paths.md` now includes concrete example requests and tool sequences
+  for each golden path.
 
 ## Progress Snapshot
 
 - Baseline validation (`python -m pytest`, `python -m mypy --config-file pyproject.toml`,
   `python -m ruff check .`, and `python -m bandit -c pyproject.toml -r scholar_search_mcp`)
   passed in this environment after installing `.[dev]`.
-- The current pass keeps runtime behavior stable and focuses on agent guidance,
-  documentation, and tests for tool-selection intent.
-- GitHub-native agent instructions should now be kept in sync with runtime
-  onboarding guidance whenever workflow defaults change.
+- The current pass keeps runtime behavior stable and focuses on schema discoverability,
+  structured hints, and tighter agent guidance.
 
 ## Known Hotspots
 
@@ -86,12 +87,9 @@ python -m bandit -c pyproject.toml -r scholar_search_mcp
 1. Add more negative tests for CORE schema drift, especially malformed author shapes, journal fields, and URL containers.
 2. Consider moving from per-request `httpx.AsyncClient` creation to shared clients if connection reuse becomes important.
 3. Decide whether the compatibility facade in `scholar_search_mcp/server.py` should remain broad or be narrowed with an explicit supported surface.
-4. Expand workflow examples in README/resources so each golden path has at least
-   one concrete user request and tool sequence.
-5. Consider whether workflow-specific tags or annotations should be added to the
-   FastMCP tool metadata for even stronger progressive disclosure in IDE agents.
-6. Revisit `.github/copilot-instructions.md` whenever the cloud-coding workflow,
+4. Revisit `.github/copilot-instructions.md` whenever the cloud-coding workflow,
    validation stack, or durable planning docs materially change.
+5. Add a success-metric test that asserts `brokerMetadata.nextStepHint` is visible in responses and varies by provider.
 
 ## Commit Hygiene
 

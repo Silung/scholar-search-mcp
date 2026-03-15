@@ -58,6 +58,17 @@ class Paper(ApiModel):
     source: str | None = None
     source_id: str | None = Field(default=None, alias="sourceId")
     canonical_id: str | None = Field(default=None, alias="canonicalId")
+    scholar_result_id: str | None = Field(
+        default=None,
+        alias="scholarResultId",
+        description=(
+            "SerpApi Google Scholar result_id for this paper. Present only on "
+            "serpapi_google_scholar results. Pass as result_id to "
+            "get_paper_citation_formats to retrieve MLA, APA, BibTeX, and other "
+            "export formats. Use this field — not sourceId — because sourceId may "
+            "be a cluster_id or cites_id when result_id is absent."
+        ),
+    )
 
 
 class BrokerMetadata(BaseModel):
@@ -94,6 +105,13 @@ class BrokerMetadata(BaseModel):
     recommended_pagination_tool: str = Field(
         default="search_papers_bulk",
         serialization_alias="recommendedPaginationTool",
+    )
+    next_step_hint: str = Field(
+        default=(
+            "Inspect the results. To get more pages use search_papers_bulk. "
+            "To expand from a paper use get_paper_citations or get_paper_references."
+        ),
+        serialization_alias="nextStepHint",
     )
 
 

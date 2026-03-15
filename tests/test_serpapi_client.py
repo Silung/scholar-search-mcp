@@ -743,7 +743,7 @@ def test_serpapi_normalize_scholar_result_id_preserved_as_extra() -> None:
     assert paper["sourceId"] == "rid-100"  # result_id wins in sourceId priority
     assert paper["scholarClusterId"] == "cid-100"
 
-    # result_id absent: sourceId falls back to cluster_id; scholarResultId absent
+    # result_id absent: sourceId falls back to cluster_id; scholarResultId is None
     paper2 = normalize_organic_result(
         {
             "title": "Cluster Only Paper",
@@ -752,7 +752,7 @@ def test_serpapi_normalize_scholar_result_id_preserved_as_extra() -> None:
     )
     assert paper2 is not None
     assert paper2["sourceId"] == "cid-only"
-    assert "scholarResultId" not in paper2  # no result_id available
+    assert paper2["scholarResultId"] is None  # no result_id: field present but None
 
 
 def test_serpapi_normalize_source_id_not_same_as_result_id_when_absent() -> None:
@@ -772,8 +772,8 @@ def test_serpapi_normalize_source_id_not_same_as_result_id_when_absent() -> None
     assert paper is not None
     # sourceId falls back to cites_id — NOT a result_id
     assert paper["sourceId"] == "cites-999"
-    # No result_id => no scholarResultId extra
-    assert "scholarResultId" not in paper
+    # No result_id => scholarResultId field is None (not absent)
+    assert paper["scholarResultId"] is None
 
 
 @pytest.mark.asyncio
