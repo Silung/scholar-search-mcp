@@ -156,4 +156,43 @@ async def test_fastmcp_resource_and_prompt_support_agent_onboarding() -> None:
     )
     assert any(prompt.name == "plan_scholar_search" for prompt in prompts)
     assert "search_papers_bulk" in guide[0].text
+    assert "Quick literature discovery" in guide[0].text
+    assert "cited-by expansion" in guide[0].text
+    assert "Known-item lookup" in guide[0].text
+    assert "search_snippets" in guide[0].text
     assert "pagination.nextCursor" in plan.messages[0].content.text
+    assert "known-item lookup" in plan.messages[0].content.text
+    assert "get_paper_citations for cited-by expansion" in plan.messages[0].content.text
+    assert "search_snippets only as a special-purpose recovery tool" in (
+        plan.messages[0].content.text
+    )
+
+
+def test_tool_descriptions_include_workflow_guidance() -> None:
+    from scholar_search_mcp.tools import TOOL_DESCRIPTIONS
+
+    assert "quick literature discovery" in TOOL_DESCRIPTIONS["search_papers"]
+    assert "exhaustive retrieval" in TOOL_DESCRIPTIONS["search_papers_bulk"]
+    assert "Known-item lookup" in TOOL_DESCRIPTIONS["search_papers_match"]
+    assert "Known-item lookup" in TOOL_DESCRIPTIONS["get_paper_details"]
+    assert "cite this paper (cited by)" in TOOL_DESCRIPTIONS["get_paper_citations"]
+    assert "references this paper cites" in TOOL_DESCRIPTIONS["get_paper_references"]
+    assert "author-centric workflow" in TOOL_DESCRIPTIONS["get_author_papers"].lower()
+    assert "special-purpose recovery tool" in TOOL_DESCRIPTIONS[
+        "search_snippets"
+    ].lower()
+
+
+def test_github_copilot_instructions_align_with_repo_workflow_docs() -> None:
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    instructions = (repo_root / ".github" / "copilot-instructions.md").read_text()
+
+    assert "GitHub cloud coding agent" in instructions
+    assert "docs/golden-paths.md" in instructions
+    assert "docs/agent-handoff.md" in instructions
+    assert "search_papers` for quick literature discovery" in instructions
+    assert "search_papers_bulk` for exhaustive or paginated retrieval" in instructions
+    assert "python -m pytest" in instructions
+    assert "python -m ruff check ." in instructions

@@ -240,30 +240,39 @@ python -m scholar_search_mcp
 
 ## Tools
 
+Primary defaults for agents:
+
+- Start with `search_papers` for quick literature discovery.
+- Switch to `search_papers_bulk` for exhaustive retrieval or multi-page collection.
+- Use `search_papers_match` or `get_paper_details` for known-item lookup.
+- Expand with `get_paper_citations`, `get_paper_references`, and `search_authors`
+  once you have a paper or author anchor.
+- Reach for `search_snippets` only when quote or phrase recovery is needed.
+
 
 | Tool                             | Description                                                                                              |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `search_papers`                  | Single-page best-effort brokered search. Default order: CORE → Semantic Scholar → SerpApi Google Scholar → arXiv. Optional filters: `limit`, `fields`, `year`, `venue`, `preferredProvider`, `providerOrder`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount`. No pagination — for paginated retrieval use `search_papers_bulk`. |
+| `search_papers`                  | Primary entry point for quick literature discovery. Single-page best-effort brokered search. Default order: CORE → Semantic Scholar → SerpApi Google Scholar → arXiv. Use `brokerMetadata` to see where results came from and decide whether to broaden, narrow, paginate, or pivot. Optional filters: `limit`, `fields`, `year`, `venue`, `preferredProvider`, `providerOrder`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, `minCitationCount`. No pagination — for paginated retrieval use `search_papers_bulk`. |
 | `search_papers_core`             | Single-page CORE-only search with the same normalized response shape as `search_papers`. Shared fields are accepted for schema consistency, but CORE only honors its native subset (`query`, `limit`, and `year`). |
 | `search_papers_semantic_scholar` | Single-page Semantic Scholar-only search with the same normalized response shape as `search_papers`. This is the provider-specific tool that honors the Semantic Scholar-only filters. |
 | `search_papers_serpapi`          | Single-page SerpApi Google Scholar-only search. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Shared fields are accepted for schema consistency, but SerpApi only honors its native subset (`query`, `limit`, and `year`). |
 | `search_papers_arxiv`            | Single-page arXiv-only search with the same normalized response shape as `search_papers`. Shared fields are accepted for schema consistency, but arXiv only honors its native subset (`query`, `limit`, and `year`). |
-| `search_papers_bulk`             | Paginated bulk paper search (Semantic Scholar) with advanced boolean query syntax (up to 1,000 papers/call). Treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and do not derive/edit/fabricate it; `pagination.hasMore` signals more results. |
-| `search_papers_match`            | Find the single paper whose title best matches the query string                                          |
+| `search_papers_bulk`             | Primary exhaustive retrieval tool. Paginated bulk paper search (Semantic Scholar) with advanced boolean query syntax (up to 1,000 papers/call). Treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and do not derive/edit/fabricate it; `pagination.hasMore` signals more results. |
+| `search_papers_match`            | Known-item lookup for messy or partial titles; finds the single paper whose title best matches the query string |
 | `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |
-| `get_paper_details`              | Get one paper by ID (DOI, ArXiv ID, S2 ID, or URL)                                                      |
-| `get_paper_citations`            | Papers that cite the given paper; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
-| `get_paper_references`           | References of the given paper; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_details`              | Known-item lookup by identifier: get one paper by DOI, ArXiv ID, S2 ID, or URL                         |
+| `get_paper_citations`            | Citation chasing outward: papers that cite the given paper (`cited by`); treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_references`           | Citation chasing backward: references behind the given paper; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
 | `get_paper_authors`              | Authors of the given paper; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
 | `get_author_info`                | Author profile by ID                                                                                     |
 | `get_author_papers`              | Papers by author; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow; supports `publicationDateOrYear` |
 | `search_authors`                 | Search for authors by name; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
 | `batch_get_authors`              | Details for up to 1,000 author IDs in one call                                                           |
-| `search_snippets`                | Search for matching text snippets across papers; returns snippet text, paper metadata, and score         |
+| `search_snippets`                | Special-purpose recovery tool for quote or phrase validation when title/keyword search is weak; returns snippet text, paper metadata, and score |
 | `get_paper_recommendations`      | Similar papers for a given paper (GET single-seed)                                                       |
 | `get_paper_recommendations_post` | Similar papers from positive and negative seed sets (POST multi-seed)                                    |
 | `batch_get_papers`               | Details for up to 500 paper IDs                                                                          |
-| `get_paper_citation_formats`     | Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar paper. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Pass `result_id=paper.scholarResultId` (not `paper.sourceId`) from a `serpapi_google_scholar` result. Single non-paginated response. |
+| `get_paper_citation_formats`     | Citation export step for MLA, APA, BibTeX, etc. from a Google Scholar paper. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Pass `result_id=paper.scholarResultId` (not `paper.sourceId`) from a `serpapi_google_scholar` result. Single non-paginated response. |
 
 
 ## Resources and prompts
@@ -311,7 +320,9 @@ For maintainer orientation after the module split, start with `docs/agent-handof
 
 ## Guides
 
+- [GitHub Copilot Instructions](.github/copilot-instructions.md) - repo-specific guidance for GitHub Copilot and the GitHub cloud coding agent, including workflow defaults and durable planning expectations.
 - [Agent Handoff](docs/agent-handoff.md) - current repo status, validation commands, and next recommended work for follow-on agents.
+- [Scholar Search Golden Paths](docs/golden-paths.md) - primary personas, workflow defaults, success signals, and future workflow-oriented follow-up work.
 - [Semantic Scholar API Guide](docs/semantic-scholar-api-guide.md) - practical guidance for respectful and effective Semantic Scholar API usage with async rate limiting, retries, and `.env`-based local development.
 
 ## License

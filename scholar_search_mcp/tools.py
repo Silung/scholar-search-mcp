@@ -13,12 +13,14 @@ OPAQUE_CURSOR_CONTRACT = (
 
 TOOL_DESCRIPTIONS = {
     "search_papers": (
-        "Best-effort paper search that tries CORE → Semantic Scholar → "
+        "Primary entry point for quick literature discovery: start here when "
+        "quick topic exploration needs one strong first page fast. Best-effort "
+        "paper search tries CORE → Semantic Scholar → "
         "SerpApi Google Scholar (opt-in, paid) → arXiv in order by default. "
         "Use preferredProvider to try one provider first, or providerOrder to "
-        "override the broker chain for this call. Provider names accepted by "
-        "those arguments are core, semantic_scholar, arxiv, and either serpapi "
-        "or serpapi_google_scholar. "
+        "override the broker chain for this call when source constraints matter. "
+        "Provider names accepted by those arguments are core, semantic_scholar, "
+        "arxiv, and either serpapi or serpapi_google_scholar. "
         "Optional filters: year, venue, publicationDateOrYear, "
         "fieldsOfStudy, publicationTypes, openAccessPdf, minCitationCount. "
         "Semantic Scholar-only filters still cause CORE and SerpApi to be "
@@ -56,52 +58,63 @@ TOOL_DESCRIPTIONS = {
         "consistency, but arXiv only honors query, limit, and year."
     ),
     "search_papers_bulk": (
-        "Paginated bulk paper search (Semantic Scholar) with advanced boolean "
-        "query syntax. Supports sorting and up to 1,000 papers per call. "
+        "Primary exhaustive retrieval tool for serious research, datasets, or "
+        "multi-page collection. Paginated bulk paper search (Semantic Scholar) "
+        "with advanced boolean query syntax. Supports sorting and up to 1,000 "
+        "papers per call. "
         "Example first call: {query: 'transformers', limit: 100}. "
         "Use cursor=pagination.nextCursor from the response to fetch the next "
         "page; hasMore signals when more results exist. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "search_papers_match": (
-        "Find the single paper whose title best matches the query string."
+        "Known-item lookup for messy or partial titles. Find the single paper "
+        "whose title best matches the query string."
     ),
     "paper_autocomplete": (
         "Return paper title completions for a partial query string."
     ),
     "get_paper_details": (
-        "Get paper details. Supports DOI, ArXiv ID, Semantic Scholar ID, or URL."
+        "Known-item lookup when you already have an identifier. Get paper "
+        "details from a DOI, ArXiv ID, Semantic Scholar ID, or URL."
     ),
     "get_paper_citations": (
-        "Get papers that cite this paper. "
+        "Citation chasing outward: get papers that cite this paper (cited by). "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_paper_references": (
-        "Get references of this paper. "
+        "Citation chasing backward: get the references this paper cites. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_paper_authors": (
-        "Get authors of a paper. "
+        "Get authors of a paper so you can pivot from a paper into an author or "
+        "collaboration workflow. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
-    "get_author_info": "Get author details.",
+    "get_author_info": (
+        "Get author details for an author-centric workflow after search_authors "
+        "or get_paper_authors."
+    ),
     "get_author_papers": (
-        "Get papers by an author. "
+        "Author-centric workflow step: get papers by an author, including recent "
+        "or filtered work. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "search_authors": (
-        "Search for authors by name. "
+        "Primary author-search entry point. Search for authors by name before "
+        "expanding to get_author_info or get_author_papers. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "batch_get_authors": "Get details for multiple authors at once (up to 1,000).",
     "search_snippets": (
-        "Search for matching text snippets across papers. Useful for quote-like "
-        "retrieval. Returns snippet text plus paper metadata and relevance score."
+        "Special-purpose recovery tool for quote-like or phrase-based retrieval "
+        "when title or keyword search is weak. Returns snippet text plus paper "
+        "metadata and relevance score."
     ),
     "get_paper_recommendations": "Get similar paper recommendations for a paper.",
     "get_paper_recommendations_post": (
@@ -109,9 +122,10 @@ TOOL_DESCRIPTIONS = {
     ),
     "batch_get_papers": "Get details for multiple papers (up to 500).",
     "get_paper_citation_formats": (
-        "Get citation export formats (MLA, APA, BibTeX, etc.) for a Google Scholar "
-        "paper. Requires SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY "
-        "(paid SerpApi service, results cached 1 hour). "
+        "Citation export step after discovery: get MLA, APA, BibTeX, and other "
+        "formats for a Google Scholar paper. Requires "
+        "SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY (paid SerpApi "
+        "service, results cached 1 hour). "
         "Pass result_id=paper.scholarResultId (NOT paper.sourceId) from a "
         "serpapi_google_scholar search_papers result. "
         "paper.scholarResultId is the raw Scholar result_id; paper.sourceId may "
