@@ -2138,8 +2138,8 @@ def test_core_paper_canonical_id_falls_back_to_source_id_without_doi() -> None:
 
 def test_ss_paper_has_provenance_fields_with_doi() -> None:
     """Semantic Scholar papers with a DOI must prefer the DOI as canonicalId."""
-    from scholar_search_mcp.search import _enrich_ss_paper
     from scholar_search_mcp.models import Paper
+    from scholar_search_mcp.search import _enrich_ss_paper
 
     paper = Paper.model_validate(
         {
@@ -2159,9 +2159,9 @@ def test_ss_paper_has_provenance_fields_with_doi() -> None:
 
 
 def test_ss_paper_canonical_id_falls_back_to_paper_id_without_doi() -> None:
-    """Semantic Scholar papers without a DOI must fall back to paperId as canonicalId."""
-    from scholar_search_mcp.search import _enrich_ss_paper
+    """SS papers without a DOI must fall back to paperId as canonicalId."""
     from scholar_search_mcp.models import Paper
+    from scholar_search_mcp.search import _enrich_ss_paper
 
     paper = Paper.model_validate(
         {
@@ -2179,8 +2179,8 @@ def test_ss_paper_canonical_id_falls_back_to_paper_id_without_doi() -> None:
 
 def test_ss_paper_canonical_id_uses_arxiv_id_when_no_doi_or_paper_id() -> None:
     """When paperId is absent, arXiv ID is used as canonicalId."""
-    from scholar_search_mcp.search import _enrich_ss_paper
     from scholar_search_mcp.models import Paper
+    from scholar_search_mcp.search import _enrich_ss_paper
 
     paper = Paper.model_validate(
         {
