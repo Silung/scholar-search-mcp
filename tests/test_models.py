@@ -258,4 +258,3 @@ def test_broker_metadata_next_step_hint_in_serialized_response() -> None:
     assert "brokerMetadata" in serialized
     assert "nextStepHint" in serialized["brokerMetadata"]
     assert serialized["brokerMetadata"]["nextStepHint"]
-
