@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..constants import SUPPORTED_AUTHOR_FIELDS
+
 
 class ToolArgsModel(BaseModel):
     """Base MCP tool input model."""
@@ -18,11 +20,43 @@ OPAQUE_CURSOR_FIELD_DESCRIPTION = (
     "different tool or query flow. Omit to start from the beginning."
 )
 
+SUPPORTED_AUTHOR_FIELDS_TEXT = ", ".join(SUPPORTED_AUTHOR_FIELDS)
+AUTHOR_FIELDS_DESCRIPTION = (
+    "Fields to return. Supported values: " + SUPPORTED_AUTHOR_FIELDS_TEXT
+)
+AUTHOR_ID_DESCRIPTION = (
+    "Semantic Scholar author ID from search_authors or get_paper_authors"
+)
+AUTHOR_SEARCH_QUERY_DESCRIPTION = (
+    "Author name to search for. Plain-text only; initials and exact-name "
+    "punctuation may be normalized before the upstream request."
+)
+SEMANTIC_SCHOLAR_EXPANSION_PAPER_ID_DESCRIPTION = (
+    "Paper identifier for Semantic Scholar expansion tools. Prefer a Semantic "
+    "Scholar paperId, DOI, or canonicalId; provider-specific brokered ids such "
+    "as raw CORE paperId/sourceId values are not portable."
+)
+
 
 def _clamp_limit(value: int | None, default: int, maximum: int) -> int:
     if value is None:
         return default
     return min(max(int(value), 1), maximum)
+
+
+def _validate_author_fields(fields: list[str] | None) -> list[str] | None:
+    if fields is None:
+        return None
+    unsupported = [field for field in fields if field not in SUPPORTED_AUTHOR_FIELDS]
+    if unsupported:
+        raise ValueError(
+            "Unsupported author fields: "
+            + ", ".join(unsupported)
+            + ". Supported values: "
+            + SUPPORTED_AUTHOR_FIELDS_TEXT
+            + "."
+        )
+    return fields
 
 
 SearchProvider = Literal[
@@ -267,6 +301,7 @@ class PaperLookupArgs(ToolArgsModel):
 
 
 class PaperListArgs(PaperLookupArgs):
+    paper_id: str = Field(description=SEMANTIC_SCHOLAR_EXPANSION_PAPER_ID_DESCRIPTION)
     limit: int = Field(
         default=100,
         description="Max results (default 100, max 1000)",
@@ -283,8 +318,8 @@ class PaperListArgs(PaperLookupArgs):
 
 
 class PaperAuthorsArgs(ToolArgsModel):
-    paper_id: str = Field(description="Paper ID")
-    fields: list[str] | None = Field(default=None, description="Fields to return")
+    paper_id: str = Field(description=SEMANTIC_SCHOLAR_EXPANSION_PAPER_ID_DESCRIPTION)
+    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
     limit: int = Field(
         default=100,
         description="Max results (default 100, max 1000)",
@@ -299,10 +334,20 @@ class PaperAuthorsArgs(ToolArgsModel):
     def clamp_limit(cls, value: int | None) -> int:
         return _clamp_limit(value, 100, 1000)
 
+    @field_validator("fields")
+    @classmethod
+    def validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_author_fields(value)
+
 
 class AuthorInfoArgs(ToolArgsModel):
-    author_id: str = Field(description="Author ID")
-    fields: list[str] | None = Field(default=None, description="Fields to return")
+    author_id: str = Field(description=AUTHOR_ID_DESCRIPTION)
+    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
+
+    @field_validator("fields")
+    @classmethod
+    def validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_author_fields(value)
 
 
 class AuthorPapersArgs(AuthorInfoArgs):
@@ -327,8 +372,8 @@ class AuthorPapersArgs(AuthorInfoArgs):
 
 
 class AuthorSearchArgs(ToolArgsModel):
-    query: str = Field(description="Author name to search for")
-    fields: list[str] | None = Field(default=None, description="Fields to return")
+    query: str = Field(description=AUTHOR_SEARCH_QUERY_DESCRIPTION)
+    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
     limit: int = Field(
         default=10,
         description="Max results (default 10, max 1000)",
@@ -343,10 +388,15 @@ class AuthorSearchArgs(ToolArgsModel):
     def clamp_limit(cls, value: int | None) -> int:
         return _clamp_limit(value, 10, 1000)
 
+    @field_validator("fields")
+    @classmethod
+    def validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_author_fields(value)
+
 
 class BatchGetAuthorsArgs(ToolArgsModel):
     author_ids: list[str] = Field(description="List of author IDs (up to 1000)")
-    fields: list[str] | None = Field(default=None, description="Fields to return")
+    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
 
     @field_validator("author_ids")
     @classmethod
@@ -356,6 +406,11 @@ class BatchGetAuthorsArgs(ToolArgsModel):
                 f"Maximum 1000 author IDs per batch request, got {len(value)}"
             )
         return value
+
+    @field_validator("fields")
+    @classmethod
+    def validate_fields(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_author_fields(value)
 
 
 class SnippetSearchArgs(ToolArgsModel):

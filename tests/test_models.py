@@ -21,6 +21,21 @@ def test_batch_get_authors_rejects_oversized_list() -> None:
         BatchGetAuthorsArgs(author_ids=[f"a{i}" for i in range(1001)])
 
 
+def test_author_field_models_reject_unsupported_fields() -> None:
+    """Author-facing tools must fail fast for unsupported author field names."""
+    from pydantic import ValidationError
+
+    from scholar_search_mcp.models.tools import AuthorInfoArgs, AuthorSearchArgs
+
+    with pytest.raises(ValidationError, match="Unsupported author fields: aliases"):
+        AuthorInfoArgs(author_id="9191855", fields=["aliases"])
+
+    with pytest.raises(
+        ValidationError, match="Supported values: authorId, name, affiliations"
+    ):
+        AuthorSearchArgs(query="Ryan L. Perroy", fields=["name", "aliases"])
+
+
 def test_snippet_result_model_preserves_nested_snippet() -> None:
     """SnippetResult must keep the snippet sub-object, not hoist text to the top."""
     from scholar_search_mcp.models import SnippetResult
@@ -260,6 +275,7 @@ def test_broker_metadata_next_step_hint_is_provider_specific() -> None:
         ss_only_filters=[],
     )
     assert "pivot rather than another page from CORE" in core_meta.next_step_hint
+    assert "paper.canonicalId" in core_meta.next_step_hint
 
 
 def test_broker_metadata_next_step_hint_in_serialized_response() -> None:

@@ -80,33 +80,46 @@ TOOL_DESCRIPTIONS = {
     ),
     "get_paper_citations": (
         "Citation chasing outward: get papers that cite this paper (cited by). "
+        "Use a Semantic Scholar paperId, DOI, or paper.canonicalId for expansion "
+        "tools; provider-specific brokered ids such as raw CORE paperId/sourceId "
+        "values are not portable. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_paper_references": (
         "Citation chasing backward: get the references this paper cites. "
+        "Use a Semantic Scholar paperId, DOI, or paper.canonicalId for expansion "
+        "tools; provider-specific brokered ids such as raw CORE paperId/sourceId "
+        "values are not portable. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_paper_authors": (
         "Get authors of a paper so you can pivot from a paper into an author or "
-        "collaboration workflow. "
+        "collaboration workflow. Use a Semantic Scholar paperId, DOI, or "
+        "paper.canonicalId for this Semantic Scholar expansion path; "
+        "provider-specific brokered ids such as raw CORE paperId/sourceId values "
+        "are not portable. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "get_author_info": (
         "Get author details for an author-centric workflow after search_authors "
-        "or get_paper_authors."
+        "or get_paper_authors. author_id must be a Semantic Scholar authorId from "
+        "those tools."
     ),
     "get_author_papers": (
         "Author-centric workflow step: get papers by an author, including recent "
-        "or filtered work. "
+        "or filtered work. author_id must be a Semantic Scholar authorId from "
+        "search_authors or get_paper_authors. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
     "search_authors": (
         "Primary author-search entry point. Search for authors by name before "
-        "expanding to get_author_info or get_author_papers. "
+        "expanding to get_author_info or get_author_papers. Plain-text only: the "
+        "server normalizes exact-name punctuation such as initials before calling "
+        "Semantic Scholar. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),

@@ -51,6 +51,8 @@ Decision tree for tool selection:
 7. PHRASE / QUOTE RECOVERY → search_snippets (last resort)
 
 After search_papers: read brokerMetadata.nextStepHint for the recommended next move.
+For Semantic Scholar expansion tools, prefer paper.canonicalId, DOI, or a
+Semantic Scholar paperId rather than a provider-specific brokered id.
 To steer the broker: use preferredProvider (try-first) or providerOrder (full override).
 Provider names: core, semantic_scholar, arxiv, serpapi / serpapi_google_scholar.
 Provider-specific search inputs: search_papers_core, search_papers_serpapi, and
@@ -85,6 +87,9 @@ AGENT_WORKFLOW_GUIDE = """
 - **Citation chasing (backward references)**: `get_paper_references`
 - **Author-centric workflows**: `search_authors` → `get_author_info` →
   `get_author_papers`; pivot to `get_paper_authors` if starting from a paper.
+- **Cross-provider ID portability**: for Semantic Scholar expansion tools prefer
+  `paper.canonicalId`, DOI, or a Semantic Scholar `paperId`; brokered provider
+  IDs such as raw CORE `paperId`/`sourceId` are not portable.
 - **Quote or snippet validation**: `search_snippets` — special-purpose recovery
   tool only when title/keyword search is weak.
 - **Citation export**: `get_paper_citation_formats` — pass
@@ -335,7 +340,9 @@ def plan_scholar_search(
         "expansion and get_paper_references for backward references, and explain "
         "that direction clearly. "
         "For author-centric workflows use search_authors, get_author_info, and "
-        "get_author_papers. "
+        "get_author_papers. For Semantic Scholar expansion tools prefer "
+        "paper.canonicalId, DOI, or a Semantic Scholar paperId rather than a "
+        "provider-specific brokered id. "
         "Use search_snippets only as a special-purpose recovery tool when quote or "
         "phrase search is needed and title/keyword search is weak. "
         "Use preferredProvider/providerOrder or provider-specific search_papers_* "

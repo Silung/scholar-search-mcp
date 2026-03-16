@@ -1,6 +1,7 @@
 """Semantic Scholar API client."""
 
 import logging
+import re
 import time
 from typing import Any, Optional
 
@@ -29,6 +30,10 @@ from ...models import (
 from ...transport import asyncio, httpx
 
 logger = logging.getLogger("scholar-search-mcp")
+_AUTHOR_QUERY_QUOTES_RE = re.compile(r'["“”‘’`]+')
+_AUTHOR_QUERY_PUNCTUATION_RE = re.compile(r"[,;()]+")
+_AUTHOR_QUERY_INITIAL_PERIOD_RE = re.compile(r"(?<=\w)\.(?=\s|$)")
+_AUTHOR_QUERY_WHITESPACE_RE = re.compile(r"\s+")
 
 
 class SemanticScholarClient:
@@ -158,6 +163,27 @@ class SemanticScholarClient:
                 ]
             response = normalized
         return PaperListResponse.model_validate(response)
+
+    @staticmethod
+    def _status_code_from_error(exc: Exception) -> int | None:
+        response = getattr(exc, "response", None)
+        return getattr(response, "status_code", None)
+
+    @staticmethod
+    def _normalize_author_search_query(query: str) -> str:
+        normalized = _AUTHOR_QUERY_QUOTES_RE.sub(" ", query.strip())
+        normalized = _AUTHOR_QUERY_PUNCTUATION_RE.sub(" ", normalized)
+        normalized = _AUTHOR_QUERY_INITIAL_PERIOD_RE.sub("", normalized)
+        normalized = _AUTHOR_QUERY_WHITESPACE_RE.sub(" ", normalized).strip()
+        return normalized or query.strip()
+
+    @staticmethod
+    def _paper_id_portability_hint() -> str:
+        return (
+            "If this paper came from brokered CORE, arXiv, or SerpApi results, retry "
+            "with paper.canonicalId or a DOI instead of a provider-specific paperId "
+            "or sourceId."
+        )
 
     async def search_papers(
         self,
@@ -348,11 +374,28 @@ class SemanticScholarClient:
         }
         if offset is not None:
             params["offset"] = offset
-        response = await self._request(
-            "GET",
-            f"paper/{paper_id}/authors",
-            params=params,
-        )
+        try:
+            response = await self._request(
+                "GET",
+                f"paper/{paper_id}/authors",
+                params=params,
+            )
+        except httpx.HTTPStatusError as exc:
+            status_code = self._status_code_from_error(exc)
+            if status_code == 404:
+                raise ValueError(
+                    f"Semantic Scholar could not find paper {paper_id!r} for "
+                    "get_paper_authors. This tool only accepts Semantic "
+                    "Scholar-compatible paper identifiers. "
+                    f"{self._paper_id_portability_hint()}"
+                ) from exc
+            if status_code == 400:
+                raise ValueError(
+                    f"Semantic Scholar rejected paper identifier {paper_id!r} for "
+                    "get_paper_authors. Use a Semantic Scholar paperId, DOI, or "
+                    f"canonicalId. {self._paper_id_portability_hint()}"
+                ) from exc
+            raise
         return dump_jsonable(PaperAuthorListResponse.model_validate(response))
 
     # ------------------------------------------------------------------
@@ -366,7 +409,24 @@ class SemanticScholarClient:
     ) -> dict[str, Any]:
         """Get author info (``/author/{author_id}``)."""
         params = {"fields": ",".join(fields or DEFAULT_AUTHOR_FIELDS)}
-        response = await self._request("GET", f"author/{author_id}", params=params)
+        try:
+            response = await self._request("GET", f"author/{author_id}", params=params)
+        except httpx.HTTPStatusError as exc:
+            status_code = self._status_code_from_error(exc)
+            if status_code == 400:
+                raise ValueError(
+                    f"Semantic Scholar rejected get_author_info for author "
+                    f"{author_id!r}. Requested author fields: {params['fields']}. "
+                    "Use only supported author fields and pass a Semantic Scholar "
+                    "authorId returned by search_authors or get_paper_authors."
+                ) from exc
+            if status_code == 404:
+                raise ValueError(
+                    f"Semantic Scholar could not find author {author_id!r}. "
+                    "Use a Semantic Scholar authorId returned by search_authors "
+                    "or get_paper_authors."
+                ) from exc
+            raise
         return dump_jsonable(AuthorProfile.model_validate(response))
 
     async def get_author_papers(
@@ -386,11 +446,27 @@ class SemanticScholarClient:
             params["offset"] = offset
         if publication_date_or_year:
             params["publicationDateOrYear"] = publication_date_or_year
-        response = await self._request(
-            "GET",
-            f"author/{author_id}/papers",
-            params=params,
-        )
+        try:
+            response = await self._request(
+                "GET",
+                f"author/{author_id}/papers",
+                params=params,
+            )
+        except httpx.HTTPStatusError as exc:
+            status_code = self._status_code_from_error(exc)
+            if status_code == 400:
+                raise ValueError(
+                    f"Semantic Scholar rejected get_author_papers for author "
+                    f"{author_id!r}. Use a Semantic Scholar authorId returned by "
+                    "search_authors or get_paper_authors."
+                ) from exc
+            if status_code == 404:
+                raise ValueError(
+                    f"Semantic Scholar could not find author {author_id!r} for "
+                    "get_author_papers. Use a Semantic Scholar authorId returned by "
+                    "search_authors or get_paper_authors."
+                ) from exc
+            raise
         return dump_jsonable(PaperListResponse.model_validate(response))
 
     async def search_authors(
@@ -401,14 +477,26 @@ class SemanticScholarClient:
         offset: Optional[int] = None,
     ) -> dict[str, Any]:
         """Search for authors by name (``/author/search``)."""
+        normalized_query = self._normalize_author_search_query(query)
         params: dict[str, Any] = {
-            "query": query,
+            "query": normalized_query,
             "limit": min(limit, 1000),
             "fields": ",".join(fields or DEFAULT_AUTHOR_FIELDS),
         }
         if offset is not None:
             params["offset"] = offset
-        response = await self._request("GET", "author/search", params=params)
+        try:
+            response = await self._request("GET", "author/search", params=params)
+        except httpx.HTTPStatusError as exc:
+            if self._status_code_from_error(exc) == 400:
+                raise ValueError(
+                    f"Semantic Scholar rejected author search query {query!r}. "
+                    "search_authors only supports plain-text name queries. "
+                    f"The MCP server normalized the query to {normalized_query!r}; "
+                    "if the request still fails, retry without quotes, boolean "
+                    "operators, or other special syntax."
+                ) from exc
+            raise
         return dump_jsonable(AuthorListResponse.model_validate(response))
 
     async def batch_get_authors(
