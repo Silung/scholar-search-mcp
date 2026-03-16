@@ -207,6 +207,13 @@ def test_paper_scholar_result_id_is_first_class_field() -> None:
         "so agents can follow the citation export golden path."
     )
 
+    assert "recommendedExpansionId" in props
+    assert "expansionIdStatus" in props
+    assert "Semantic Scholar-compatible identifier" in props[
+        "recommendedExpansionId"
+    ].get("description", "")
+    assert "'portable' means" in props["expansionIdStatus"].get("description", "")
+
 
 def test_paper_scholar_result_id_set_for_serpapi_results() -> None:
     """Paper.scholarResultId must be set on SerpApi results and None otherwise."""
@@ -275,7 +282,8 @@ def test_broker_metadata_next_step_hint_is_provider_specific() -> None:
         ss_only_filters=[],
     )
     assert "pivot rather than another page from CORE" in core_meta.next_step_hint
-    assert "paper.canonicalId" in core_meta.next_step_hint
+    assert "paper.recommendedExpansionId" in core_meta.next_step_hint
+    assert "paper.expansionIdStatus='not_portable'" in core_meta.next_step_hint
 
 
 def test_broker_metadata_next_step_hint_in_serialized_response() -> None:

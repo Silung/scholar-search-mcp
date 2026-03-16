@@ -53,6 +53,8 @@ def _enrich_ss_paper(paper: Paper) -> Paper:
             "source": paper.source or "semantic_scholar",
             "source_id": source_id,
             "canonical_id": canonical_id,
+            "recommended_expansion_id": canonical_id,
+            "expansion_id_status": "portable",
         }
     )
 
@@ -90,9 +92,11 @@ def _metadata(
     }
     portability_guidance = (
         "For Semantic Scholar expansion tools such as get_paper_citations, "
-        "get_paper_references, get_paper_authors, or author pivots, prefer a "
-        "Semantic Scholar paperId, paper.canonicalId, or DOI rather than a "
-        "provider-specific brokered id. "
+        "get_paper_references, get_paper_authors, or author pivots, prefer "
+        "paper.recommendedExpansionId when it is present. If a result reports "
+        "paper.expansionIdStatus='not_portable', do not retry with brokered "
+        "paperId/sourceId/canonicalId values; resolve the paper through DOI or "
+        "a Semantic Scholar-native lookup first. "
     )
 
     if provider_used == "semantic_scholar":

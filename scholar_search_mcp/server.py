@@ -51,8 +51,10 @@ Decision tree for tool selection:
 7. PHRASE / QUOTE RECOVERY → search_snippets (last resort)
 
 After search_papers: read brokerMetadata.nextStepHint for the recommended next move.
-For Semantic Scholar expansion tools, prefer paper.canonicalId, DOI, or a
-Semantic Scholar paperId rather than a provider-specific brokered id.
+For Semantic Scholar expansion tools, prefer paper.recommendedExpansionId when
+present. If paper.expansionIdStatus is not_portable, do not retry with brokered
+paperId/sourceId/canonicalId values; resolve the paper through DOI or a
+Semantic Scholar-native lookup first.
 If search_papers_match returns no match, the item may be a dissertation,
 software release, report, or other output outside the indexed paper surface.
 For common-name author lookup, add affiliation, coauthor, venue, or topic clues
@@ -95,8 +97,10 @@ AGENT_WORKFLOW_GUIDE = """
   topic clues to `search_authors`, then confirm identity with
   `get_author_info`/`get_author_papers`.
 - **Cross-provider ID portability**: for Semantic Scholar expansion tools prefer
-  `paper.canonicalId`, DOI, or a Semantic Scholar `paperId`; brokered provider
-  IDs such as raw CORE `paperId`/`sourceId` are not portable.
+  `paper.recommendedExpansionId` when it is present. If
+  `paper.expansionIdStatus` is `not_portable`, brokered `paperId`, `sourceId`,
+  and `canonicalId` values are still provider-specific and must be resolved
+  through DOI or a Semantic Scholar-native lookup first.
 - **Outside-paper outputs**: dissertations, software releases, reports, and
   other grey literature may fall outside the indexed paper surface even when a
   title is real; treat a structured no-match from `search_papers_match` as a
@@ -357,9 +361,10 @@ def plan_scholar_search(
         "For author-centric workflows use search_authors, get_author_info, and "
         "get_author_papers. For common names, add affiliation, coauthor, venue, "
         "or topic clues before confirming the best candidate. For Semantic "
-        "Scholar expansion tools prefer "
-        "paper.canonicalId, DOI, or a Semantic Scholar paperId rather than a "
-        "provider-specific brokered id. "
+        "Scholar expansion tools prefer paper.recommendedExpansionId when it is "
+        "present. If paper.expansionIdStatus is not_portable, do not retry with "
+        "brokered paperId/sourceId/canonicalId values; resolve the paper "
+        "through DOI or a Semantic Scholar-native lookup first. "
         "Use search_snippets only as a special-purpose recovery tool when quote or "
         "phrase search is needed and title/keyword search is weak; if the provider "
         "rejects that query, expect an empty degraded response rather than a raw "

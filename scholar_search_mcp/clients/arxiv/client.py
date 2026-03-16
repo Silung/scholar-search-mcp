@@ -154,5 +154,7 @@ class ArxivClient:
                 source="arxiv",
                 sourceId=arxiv_id,
                 canonicalId=arxiv_id,
+                recommendedExpansionId=arxiv_id,
+                expansionIdStatus="portable",
             )
         )

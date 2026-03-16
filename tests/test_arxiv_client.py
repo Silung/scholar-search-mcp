@@ -44,7 +44,7 @@ def test_arxiv_entry_to_paper_extracts_expected_fields() -> None:
 
 
 def test_arxiv_paper_has_provenance_fields() -> None:
-    """arXiv papers must expose source, sourceId, and canonicalId."""
+    """arXiv papers must expose portable provenance and expansion fields."""
     entry = ET.fromstring(
         """
         <entry xmlns="http://www.w3.org/2005/Atom"
@@ -65,3 +65,5 @@ def test_arxiv_paper_has_provenance_fields() -> None:
     assert paper["source"] == "arxiv"
     assert paper["sourceId"] == "2305.12345"
     assert paper["canonicalId"] == "2305.12345"
+    assert paper["recommendedExpansionId"] == "2305.12345"
+    assert paper["expansionIdStatus"] == "portable"

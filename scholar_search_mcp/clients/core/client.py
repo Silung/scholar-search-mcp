@@ -202,6 +202,8 @@ class CoreApiClient:
         doi = (result.get("doi") or "").strip()
         paper_source_id = core_id or doi or None
         paper_canonical_id = doi or core_id or None
+        recommended_expansion_id = doi or None
+        expansion_id_status = "portable" if recommended_expansion_id else "not_portable"
 
         return dump_jsonable(
             Paper(
@@ -222,5 +224,7 @@ class CoreApiClient:
                 source="core",
                 sourceId=paper_source_id,
                 canonicalId=paper_canonical_id,
+                recommendedExpansionId=recommended_expansion_id,
+                expansionIdStatus=expansion_id_status,
             )
         )

@@ -56,6 +56,8 @@ def test_core_result_to_paper_prefers_doi_url_and_normalizes_metadata() -> None:
         "source": "core",
         "sourceId": "42",
         "canonicalId": "10.1000/example-doi",
+        "recommendedExpansionId": "10.1000/example-doi",
+        "expansionIdStatus": "portable",
         "scholarResultId": None,
     }
 
@@ -151,8 +153,8 @@ def test_core_paper_has_provenance_fields_with_doi() -> None:
     assert paper["canonicalId"] == "10.1234/core-test"
 
 
-def test_core_paper_canonical_id_falls_back_to_source_id_without_doi() -> None:
-    """CORE papers without a DOI must use the CORE native ID as canonicalId."""
+def test_core_paper_without_doi_is_marked_not_portable_for_expansion() -> None:
+    """CORE-native fallback IDs must not be presented as expansion-safe."""
     paper = server.CoreApiClient()._result_to_paper(
         {
             "id": 11111,
@@ -165,6 +167,8 @@ def test_core_paper_canonical_id_falls_back_to_source_id_without_doi() -> None:
     assert paper["source"] == "core"
     assert paper["sourceId"] == "11111"
     assert paper["canonicalId"] == "11111"
+    assert paper["expansionIdStatus"] == "not_portable"
+    assert paper["recommendedExpansionId"] is None
 
 
 @pytest.mark.asyncio

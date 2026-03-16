@@ -191,8 +191,10 @@ class SemanticScholarClient:
     def _paper_id_portability_hint() -> str:
         return (
             "If this paper came from brokered CORE, arXiv, or SerpApi results, retry "
-            "with paper.canonicalId or a DOI instead of a provider-specific paperId "
-            "or sourceId."
+            "with paper.recommendedExpansionId when it is present. If "
+            "paper.expansionIdStatus is not_portable, resolve the paper through "
+            "DOI or a Semantic Scholar-native lookup instead of reusing "
+            "provider-specific paperId, sourceId, or canonicalId values."
         )
 
     @staticmethod
@@ -507,8 +509,8 @@ class SemanticScholarClient:
             if status_code == 400:
                 raise ValueError(
                     f"Semantic Scholar rejected paper identifier {paper_id!r} for "
-                    "get_paper_authors. Use a Semantic Scholar paperId, DOI, or "
-                    f"canonicalId. {self._paper_id_portability_hint()}"
+                    "get_paper_authors. Use a Semantic Scholar-compatible paper "
+                    f"identifier. {self._paper_id_portability_hint()}"
                 ) from exc
             raise
         return dump_jsonable(PaperAuthorListResponse.model_validate(response))

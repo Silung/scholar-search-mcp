@@ -538,6 +538,8 @@ def test_ss_paper_has_provenance_fields_with_doi() -> None:
     assert enriched.source == "semantic_scholar"
     assert enriched.source_id == "649def34f8be52c8b66281af98ae884c09aef38b"
     assert enriched.canonical_id == "10.5555/3295222.3295349"
+    assert enriched.recommended_expansion_id == "10.5555/3295222.3295349"
+    assert enriched.expansion_id_status == "portable"
 
 
 def test_ss_paper_canonical_id_falls_back_to_paper_id_without_doi() -> None:
@@ -557,6 +559,8 @@ def test_ss_paper_canonical_id_falls_back_to_paper_id_without_doi() -> None:
     assert enriched.source == "semantic_scholar"
     assert enriched.source_id == "aabbcc1234"
     assert enriched.canonical_id == "aabbcc1234"
+    assert enriched.recommended_expansion_id == "aabbcc1234"
+    assert enriched.expansion_id_status == "portable"
 
 
 def test_ss_paper_canonical_id_uses_arxiv_id_when_no_doi_or_paper_id() -> None:
@@ -575,6 +579,8 @@ def test_ss_paper_canonical_id_uses_arxiv_id_when_no_doi_or_paper_id() -> None:
     assert enriched.source == "semantic_scholar"
     assert enriched.source_id is None
     assert enriched.canonical_id == "2111.99999"
+    assert enriched.recommended_expansion_id == "2111.99999"
+    assert enriched.expansion_id_status == "portable"
 
 
 @pytest.mark.asyncio
@@ -609,6 +615,43 @@ async def test_search_papers_ss_results_include_provenance(
     assert paper["source"] == "semantic_scholar"
     assert paper["sourceId"] == "ss-paper-id"
     assert paper["canonicalId"] == "10.9999/test"
+    assert paper["recommendedExpansionId"] == "10.9999/test"
+    assert paper["expansionIdStatus"] == "portable"
+
+
+@pytest.mark.asyncio
+async def test_search_papers_core_result_without_doi_marks_expansion_id_not_portable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CoreClient:
+        async def search(self, **kwargs: Any) -> dict:
+            return {
+                "total": 1,
+                "entries": [
+                    {
+                        "paperId": "core-1",
+                        "title": "CORE no DOI",
+                        "source": "core",
+                        "sourceId": "core-1",
+                        "canonicalId": "core-1",
+                        "expansionIdStatus": "not_portable",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(server, "enable_core", True)
+    monkeypatch.setattr(server, "enable_semantic_scholar", False)
+    monkeypatch.setattr(server, "enable_arxiv", False)
+    monkeypatch.setattr(server, "enable_serpapi", False)
+    monkeypatch.setattr(server, "core_client", CoreClient())
+
+    response = await server.call_tool("search_papers", {"query": "core no doi"})
+    payload = json.loads(response[0].text)
+    paper = payload["data"][0]
+
+    assert paper["canonicalId"] == "core-1"
+    assert paper["expansionIdStatus"] == "not_portable"
+    assert "recommendedExpansionId" not in paper
 
 
 @pytest.mark.asyncio

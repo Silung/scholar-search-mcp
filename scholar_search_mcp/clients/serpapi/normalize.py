@@ -91,6 +91,8 @@ def normalize_organic_result(result: dict[str, Any]) -> Optional[dict[str, Any]]
 
     # canonicalId priority: DOI > cluster_id > result_id > sourceId
     canonical_id: Optional[str] = doi or cluster_id or result_id or source_id
+    recommended_expansion_id: Optional[str] = doi or None
+    expansion_id_status = "portable" if recommended_expansion_id else "not_portable"
 
     # --- Authors ---
     authors: list[Author] = []
@@ -158,6 +160,8 @@ def normalize_organic_result(result: dict[str, Any]) -> Optional[dict[str, Any]]
         source="serpapi_google_scholar",
         sourceId=source_id,
         canonicalId=canonical_id,
+        recommendedExpansionId=recommended_expansion_id,
+        expansionIdStatus=expansion_id_status,
         scholarResultId=result_id,
     )
     # Preserve supplementary Scholar cluster/cite identifiers as extras for

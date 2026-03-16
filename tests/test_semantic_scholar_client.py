@@ -722,7 +722,7 @@ async def test_get_paper_authors_surfaces_portability_hint_for_404(
     monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
 
     sc = server.SemanticScholarClient()
-    with pytest.raises(ValueError, match="paper.canonicalId or a DOI"):
+    with pytest.raises(ValueError, match="paper.recommendedExpansionId"):
         await sc.get_paper_authors("170189535")
 
 

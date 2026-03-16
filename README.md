@@ -168,15 +168,17 @@ Brokered `search_papers` results normalize metadata across providers, but raw
 provider IDs are **not automatically portable** into Semantic Scholar expansion
 tools such as `get_paper_citations`, `get_paper_references`, `get_paper_authors`,
 or the author-pivot flow that follows them. When a brokered result did **not**
-come from Semantic Scholar, prefer one of these identifiers for downstream
-Semantic Scholar expansion:
+come from Semantic Scholar:
 
-1. `paper.canonicalId`
-2. a DOI (for example `DOI:10.xxxx/...` when available)
-3. a Semantic Scholar `paperId`
+- prefer `paper.recommendedExpansionId` when it is present
+- check `paper.expansionIdStatus` before reusing any returned identifier
+- if `paper.expansionIdStatus` is `not_portable`, do **not** retry with
+  brokered `paperId`, `sourceId`, or `canonicalId`; resolve the paper through a
+  DOI or a Semantic Scholar-native lookup first
 
-Avoid retrying those expansion tools with a provider-specific brokered ID such
-as a raw CORE `paperId` or `sourceId`.
+This matters for brokered CORE results in particular: when no DOI is available,
+`paper.canonicalId` may still be only a CORE-native identifier rather than a
+Semantic Scholar-compatible expansion ID.
 
 #### Provider order and filter-based skipping
 
@@ -280,9 +282,9 @@ Primary defaults for agents:
 | `search_papers_match`            | Known-item lookup for messy or partial titles; finds the single paper whose title best matches the query string, falls back to fuzzy Semantic Scholar title search on exact-match 400/404 misses, and returns a structured no-match payload when the item still cannot be recovered |
 | `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |
 | `get_paper_details`              | Known-item lookup by identifier: get one paper by DOI, ArXiv ID, S2 ID, or URL                         |
-| `get_paper_citations`            | Citation chasing outward: papers that cite the given paper (`cited by`); for Semantic Scholar expansion prefer a Semantic Scholar `paperId`, DOI, or `paper.canonicalId` instead of a provider-specific brokered ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
-| `get_paper_references`           | Citation chasing backward: references behind the given paper; for Semantic Scholar expansion prefer a Semantic Scholar `paperId`, DOI, or `paper.canonicalId` instead of a provider-specific brokered ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
-| `get_paper_authors`              | Authors of the given paper; for this Semantic Scholar expansion path prefer a Semantic Scholar `paperId`, DOI, or `paper.canonicalId` instead of a provider-specific brokered ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_citations`            | Citation chasing outward: papers that cite the given paper (`cited by`); for Semantic Scholar expansion prefer `paper.recommendedExpansionId`, and if `paper.expansionIdStatus` is `not_portable` resolve the paper through DOI or a Semantic Scholar-native lookup before expanding; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_references`           | Citation chasing backward: references behind the given paper; for Semantic Scholar expansion prefer `paper.recommendedExpansionId`, and if `paper.expansionIdStatus` is `not_portable` resolve the paper through DOI or a Semantic Scholar-native lookup before expanding; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_authors`              | Authors of the given paper; for this Semantic Scholar expansion path prefer `paper.recommendedExpansionId`, and if `paper.expansionIdStatus` is `not_portable` resolve the paper through DOI or a Semantic Scholar-native lookup before expanding; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
 | `get_author_info`                | Author profile by Semantic Scholar author ID (typically from `search_authors` or `get_paper_authors`)   |
 | `get_author_papers`              | Papers by author; requires a Semantic Scholar author ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow; supports `publicationDateOrYear` |
 | `search_authors`                 | Search for authors by name using a plain-text query; the server normalizes exact-name punctuation before calling Semantic Scholar, and common-name workflows should add affiliation, coauthor, venue, or topic clues before confirming the best candidate; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
