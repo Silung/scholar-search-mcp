@@ -24,6 +24,9 @@ This document is the current working handoff for the fork. It is intended to giv
 - Author lookup and author-pivot guidance now call out Semantic Scholar field
   support, plain-text author search normalization, and cross-provider paper ID
   portability for downstream expansion tools.
+- Brokered paper results now distinguish expansion-safe identifiers with
+  `recommendedExpansionId` and `expansionIdStatus` so CORE-native fallback IDs
+  are not mistaken for Semantic Scholar-compatible expansion inputs.
 - Exact-title lookup now degrades more cleanly: punctuation-heavy 400/404 misses
   on `search_papers_match` fall back to fuzzy title search and then to a
   structured no-match payload.
@@ -118,6 +121,9 @@ gh aw compile test-scholar-search --dir .github/workflows
   structured hints, and tighter agent guidance.
 - The highest-impact UX issues from the last live agent pass were addressed with
   targeted runtime fixes and regression coverage.
+- The latest pass tightens expansion-ID guidance so brokered CORE `canonicalId`
+  fallback values are no longer presented as universally portable into Semantic
+  Scholar citation/author expansion flows.
 - Current follow-up work is now mostly product-shaping work around provider
   preferences and whether retry-recovered provider behavior should be surfaced
   to agents.
@@ -185,17 +191,25 @@ gh aw compile test-scholar-search --dir .github/workflows
     `search_authors` normalizes exact-name punctuation, author-field inputs are
     validated against the supported author schema before the upstream call, and
     `get_paper_authors`/author-profile failures now explain when to retry with
-    `paper.canonicalId`, DOI, or a Semantic Scholar-native identifier instead of
-    a provider-specific brokered ID.
+    `paper.recommendedExpansionId` and when brokered identifiers still require a
+    DOI or Semantic Scholar-native lookup first.
 
 8. Known-item and snippet recovery now degrade gracefully.
-   `search_papers_match` no longer leaks upstream 404s for no-match title
+    `search_papers_match` no longer leaks upstream 404s for no-match title
    lookups; it retries through fuzzy Semantic Scholar search and returns a
    structured no-match payload when the item still cannot be recovered. Common
    reasons include punctuation drift and outputs outside the indexed paper
    surface such as dissertations or software releases. `search_snippets`
    similarly returns empty degraded results with retry guidance on provider
    4xx/5xx failures.
+
+9. Brokered expansion IDs now separate portability from canonicalization.
+   `Paper` now exposes `recommendedExpansionId` and `expansionIdStatus` so
+   agents can tell when a brokered result already has a Semantic
+   Scholar-compatible identifier and when provider-native IDs still require a
+   DOI or Semantic Scholar lookup first. This is especially important for
+   CORE results whose `canonicalId` may still fall back to a raw CORE id when
+   no DOI is present.
 
 ## Known Hotspots
 
@@ -214,6 +228,8 @@ gh aw compile test-scholar-search --dir .github/workflows
 5. Decide whether the compatibility facade in `scholar_search_mcp/server.py` should remain broad or be narrowed with an explicit supported surface.
 6. Revisit `.github/copilot-instructions.md` and `docs/golden-paths.md` whenever future agent-facing search behavior materially changes.
 7. Expand the agentic workflow once stable secrets are available for deeper provider-specific assertions, for example optional SerpApi coverage.
+8. Add live or recorded UX probes for brokered SerpApi identifier portability if
+   that path becomes a frequent source of citation-expansion missteps.
 
 ## Ready Handoff Prompt
 

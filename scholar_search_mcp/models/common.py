@@ -58,6 +58,28 @@ class Paper(ApiModel):
     source: str | None = None
     source_id: str | None = Field(default=None, alias="sourceId")
     canonical_id: str | None = Field(default=None, alias="canonicalId")
+    recommended_expansion_id: str | None = Field(
+        default=None,
+        alias="recommendedExpansionId",
+        description=(
+            "Semantic Scholar-compatible identifier to prefer for expansion "
+            "tools such as get_paper_citations, get_paper_references, and "
+            "get_paper_authors. Present only when the paper already exposes a "
+            "portable DOI, arXiv ID, or Semantic Scholar paperId."
+        ),
+    )
+    expansion_id_status: Literal["portable", "not_portable"] | None = Field(
+        default=None,
+        alias="expansionIdStatus",
+        description=(
+            "Whether this paper already exposes a Semantic Scholar-compatible "
+            "expansion identifier. 'portable' means "
+            "recommendedExpansionId can be passed directly to Semantic Scholar "
+            "expansion tools. 'not_portable' means visible IDs are still "
+            "provider-specific brokered identifiers and a DOI or "
+            "Semantic-Scholar-native lookup is required first."
+        ),
+    )
     scholar_result_id: str | None = Field(
         default=None,
         alias="scholarResultId",

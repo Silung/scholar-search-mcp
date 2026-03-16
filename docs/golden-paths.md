@@ -80,6 +80,12 @@ search_papers_bulk(query="reinforcement learning from human feedback", year="202
 3. Use `get_paper_references` for backward references.
 4. Use `get_paper_authors` if the next step is an author or collaborator pivot.
 
+If the starting paper came from brokered non-Semantic-Scholar results, prefer
+`paper.recommendedExpansionId` when it is present. If
+`paper.expansionIdStatus` is `not_portable`, do not reuse brokered `paperId`,
+`sourceId`, or `canonicalId` directly in Semantic Scholar expansion tools;
+resolve the paper through DOI or a Semantic Scholar-native lookup first.
+
 **Example request**: "What papers cite 'Attention Is All You Need'?"
 
 **Tool sequence**:
@@ -128,9 +134,11 @@ search_papers_match(query="Attention Is All You Need")
 3. Use `get_author_papers` to expand into the author's work.
 4. Use `get_paper_authors` when the user starts from a paper instead of a name.
 5. When the starting paper came from brokered non-Semantic-Scholar results,
-   prefer `paper.canonicalId` or DOI for the `paper_id` you pass into Semantic
-   Scholar expansion tools; provider-specific brokered IDs such as raw CORE
-   `paperId`/`sourceId` are not portable.
+   prefer `paper.recommendedExpansionId` for the `paper_id` you pass into
+   Semantic Scholar expansion tools. If `paper.expansionIdStatus` is
+   `not_portable`, do not reuse brokered `paperId`/`sourceId`/`canonicalId`
+   values directly; resolve the paper through DOI or a Semantic Scholar-native
+   lookup first.
 6. For common names, add affiliation, coauthor, venue, or topic clues in the
    initial `search_authors` query, then use profile metadata to confirm the
    right person before reading papers.
@@ -210,8 +218,10 @@ as part of the intended agent contract.
   venue, and topic clues before profile confirmation.
 - Author-profile tools now describe the supported author fields explicitly.
 - Semantic Scholar paper-expansion tools now tell agents to prefer
-  `paper.canonicalId`, DOI, or a Semantic Scholar `paperId` instead of a
-  provider-specific brokered ID.
+  `paper.recommendedExpansionId` when present, and to treat
+  `paper.expansionIdStatus='not_portable'` as a signal that brokered
+  `paperId`/`sourceId`/`canonicalId` values still need a DOI or
+  Semantic-Scholar-native lookup before expansion.
 
 ### 6. Snippet-search provider failures now degrade cleanly
 

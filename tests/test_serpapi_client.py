@@ -33,6 +33,8 @@ def test_serpapi_normalize_organic_result_minimal() -> None:
     assert paper["sourceId"] == "abc123"
     # canonicalId: DOI not found in URL, so cluster_id > result_id
     assert paper["canonicalId"] == "cluster-xyz"
+    assert paper["expansionIdStatus"] == "not_portable"
+    assert paper["recommendedExpansionId"] is None
     assert paper["citationCount"] == 80000
     assert paper["year"] == 2017
     assert len(paper["authors"]) == 2
@@ -60,6 +62,8 @@ def test_serpapi_normalize_extracts_doi_canonical_id() -> None:
     assert paper is not None
     assert paper["canonicalId"] == "10.1038/s41586-021-03819-2"
     assert paper["sourceId"] == "rid-1"
+    assert paper["recommendedExpansionId"] == "10.1038/s41586-021-03819-2"
+    assert paper["expansionIdStatus"] == "portable"
 
 
 def test_serpapi_normalize_returns_none_for_missing_title() -> None:

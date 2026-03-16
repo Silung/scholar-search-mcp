@@ -32,9 +32,11 @@ AUTHOR_SEARCH_QUERY_DESCRIPTION = (
     "punctuation may be normalized before the upstream request."
 )
 SEMANTIC_SCHOLAR_EXPANSION_PAPER_ID_DESCRIPTION = (
-    "Paper identifier for Semantic Scholar expansion tools. Prefer a Semantic "
-    "Scholar paperId, DOI, or canonicalId; provider-specific brokered ids such "
-    "as raw CORE paperId/sourceId values are not portable."
+    "Paper identifier for Semantic Scholar expansion tools. Prefer "
+    "paper.recommendedExpansionId when brokered search results provide it. If "
+    "paper.expansionIdStatus is not_portable, do not reuse brokered "
+    "paperId/sourceId/canonicalId values directly; resolve the paper through a "
+    "DOI or Semantic Scholar-native lookup first."
 )
 
 
