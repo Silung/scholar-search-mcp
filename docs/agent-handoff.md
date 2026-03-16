@@ -5,7 +5,9 @@ This document is the current working handoff for the fork. It is intended to giv
 ## Current Status
 
 - Local development baseline is configured through `pyproject.toml` and `.pre-commit-config.yaml`.
-- Search fallback order is `CORE -> Semantic Scholar -> arXiv` for `search_papers`.
+- The default free broker path is `CORE -> Semantic Scholar -> arXiv` for
+  `search_papers`; SerpApi can be inserted between Semantic Scholar and arXiv
+  when enabled, but it is disabled by default.
 - XML parsing uses `defusedxml`.
 - README configuration examples are valid JSON.
 - GitHub Actions now validates pushes and pull requests.
@@ -19,6 +21,12 @@ This document is the current working handoff for the fork. It is intended to giv
   outside the runtime MCP surface.
 - The highest-priority workflow-level rough edges from the last agent UX review
   have now been fixed in code, tests, and durable docs.
+- `.github/workflows/test-scholar-search.md` now defines a GitHub Agentic
+  Workflow smoke test for the MCP server, with the compiled workflow checked in
+  as `.github/workflows/test-scholar-search.lock.yml`.
+- That workflow now targets the primary golden paths explicitly: quick
+  discovery, known-item lookup, pagination, citation chasing, author pivot,
+  and optional SerpApi citation export when credentials are available.
 
 ## Module Map
 
@@ -48,6 +56,14 @@ pre-commit run --all-files
 python -m pytest
 python -m mypy --config-file pyproject.toml
 python -m bandit -c pyproject.toml -r scholar_search_mcp
+```
+
+If you edit `.github/workflows/test-scholar-search.md`, recompile it before
+finishing and then rerun the standard validation stack so pre-commit can
+normalize the generated lock file:
+
+```bash
+gh aw compile test-scholar-search --dir .github/workflows
 ```
 
 ## What Was Added In This Pass
@@ -98,6 +114,11 @@ python -m bandit -c pyproject.toml -r scholar_search_mcp
   this workspace. It confirmed the new hint wording live and exposed a
   transient CORE 500, which is now mitigated by short retries in the client.
 
+- The repo now carries a checked-in agentic workflow source/lock pair for
+  high-level MCP smoke testing, covering quick discovery, known-item lookup,
+  pagination, provider spot checks, author pivot, optional citation export,
+  and no-result behavior.
+
 ## Follow-up Completed
 
 1. `search_papers_match` response-shape ambiguity is fixed.
@@ -140,7 +161,11 @@ python -m bandit -c pyproject.toml -r scholar_search_mcp
 
 1. Consider whether budget-aware provider preferences should become a more explicit first-class planning concept in the docs and prompt surfaces.
 2. Decide whether retry-recovered provider behavior should remain invisible or become broker metadata.
-3. Revisit `.github/copilot-instructions.md` and `docs/golden-paths.md` whenever future agent-facing search behavior materially changes.
+3. Add more negative tests for CORE schema drift, especially malformed author shapes, journal fields, and URL containers.
+4. Consider moving from per-request `httpx.AsyncClient` creation to shared clients if connection reuse becomes important.
+5. Decide whether the compatibility facade in `scholar_search_mcp/server.py` should remain broad or be narrowed with an explicit supported surface.
+6. Revisit `.github/copilot-instructions.md` and `docs/golden-paths.md` whenever future agent-facing search behavior materially changes.
+7. Expand the agentic workflow once stable secrets are available for deeper provider-specific assertions, for example optional SerpApi coverage.
 
 ## Ready Handoff Prompt
 

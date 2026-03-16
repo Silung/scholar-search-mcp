@@ -3,6 +3,9 @@
 This document captures the primary planning assumptions for the MCP surface so
 agents can choose the next tool with low context and high reliability.
 
+These same discovery, pagination, lookup, citation, and author-pivot paths are
+exercised by the agentic smoke test in `.github/workflows/test-scholar-search.md`.
+
 ## Primary Personas
 
 - **Quick discovery user**: wants a strong first page fast to decide whether to

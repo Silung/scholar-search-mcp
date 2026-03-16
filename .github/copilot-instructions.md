@@ -62,6 +62,11 @@ python -m ruff check .
 python -m bandit -c pyproject.toml -r scholar_search_mcp
 ```
 
+If you edit `.github/workflows/test-scholar-search.md`, also rerun
+`gh aw compile test-scholar-search --dir .github/workflows` so the checked-in
+`.lock.yml` stays synchronized with the editable Markdown workflow source, then
+run the normal validation stack so pre-commit can normalize the generated file.
+
 Run focused tests early when making localized changes, then rerun the full stack
 before finishing.
 

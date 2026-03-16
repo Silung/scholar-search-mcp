@@ -19,6 +19,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Install gh-aw
+        if: matrix.python-version == '3.12'
+        run: gh extension install github/gh-aw
+
+      - name: Verify agentic workflow lockfile is up to date
+        if: matrix.python-version == '3.12'
+        run: |
+          gh aw compile test-scholar-search --dir .github/workflows
+          git diff --exit-code -- .github/workflows/test-scholar-search.lock.yml
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

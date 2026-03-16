@@ -306,6 +306,55 @@ Run the local test suite:
 pytest
 ```
 
+### GitHub Agentic Workflow smoke test
+
+The repository now includes an agentic regression workflow source at
+`.github/workflows/test-scholar-search.md` and its compiled lock file at
+`.github/workflows/test-scholar-search.lock.yml`. After editing the Markdown
+workflow, recompile it and then run the normal validation stack so pre-commit
+can normalize the generated lock file:
+
+```bash
+gh aw compile test-scholar-search --dir .github/workflows
+```
+
+What this workflow does:
+
+- Runs GitHub Copilot as the workflow engine against the local `scholar-search`
+  MCP server inside GitHub Actions.
+- Exercises the primary golden paths instead of every tool: quick discovery,
+  known-item lookup, bulk pagination, citation chasing, author pivot, and
+  optional SerpApi citation export.
+- Produces a high-level smoke test that catches agent-facing workflow regressions
+  that unit tests can miss.
+
+How it runs in GitHub:
+
+- The editable source of truth is `.github/workflows/test-scholar-search.md`.
+- `gh aw compile ...` generates `.github/workflows/test-scholar-search.lock.yml`,
+  which is the Actions workflow file GitHub actually runs.
+- Once both files are committed to the default branch and the required secrets
+  are configured, GitHub can run the workflow on its schedule or when manually
+  triggered with `workflow_dispatch` from the Actions tab.
+
+How to update and use it:
+
+1. Edit `.github/workflows/test-scholar-search.md`.
+2. Recompile it with `gh aw compile test-scholar-search --dir .github/workflows`.
+3. Run the normal validation stack so pre-commit can normalize the generated
+   lock file.
+4. Commit both the `.md` source and `.lock.yml` output together.
+5. Push the branch, then run `Test Scholar Search MCP` from the GitHub Actions
+   UI or wait for the scheduled run on the default branch.
+
+The normal `Validate` workflow now also recompiles `test-scholar-search.md` on
+CI and fails if `.github/workflows/test-scholar-search.lock.yml` is stale, so
+pull requests cannot silently drift out of sync.
+
+For this repo, there is no separate deployment step beyond checking in the
+workflow source and compiled lock file. The workflow is "deployed" when GitHub
+Actions sees the committed `.lock.yml` on the branch where it should run.
+
 Install and run the configured pre-commit hooks:
 
 ```bash
