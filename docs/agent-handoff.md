@@ -124,6 +124,10 @@ gh aw compile test-scholar-search --dir .github/workflows
 - The agentic workflow now runs `scholar-search` through a `python:3.12`
   container mounted to `${GITHUB_WORKSPACE}` so the generated MCP Gateway
   config matches the current schema.
+- `search_papers_bulk` now truncates returned data to the requested `limit`
+  because the upstream Semantic Scholar bulk endpoint can ignore small limits;
+  agents should still prefer `search_papers` or
+  `search_papers_semantic_scholar` for small targeted pages.
 
 ## Follow-up Completed
 
@@ -154,6 +158,12 @@ gh aw compile test-scholar-search --dir .github/workflows
   path, a SerpApi-preferred path, and a venue-filtered Semantic Scholar path.
   The hint wording behaved as intended live, and the CORE path now survives
   transient backend 500s by retrying before falling through.
+
+6. `search_papers_bulk` now enforces small requested limits client-side.
+  The Semantic Scholar bulk API may still return its large provider batch even
+  when asked for fewer records, so the client truncates `data` after
+  normalization and the durable docs now steer small targeted queries toward
+  `search_papers` or `search_papers_semantic_scholar`.
 
 ## Known Hotspots
 

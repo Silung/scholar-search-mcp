@@ -57,8 +57,11 @@ TOOL_DESCRIPTIONS = {
     "search_papers_bulk": (
         "Primary exhaustive retrieval tool for serious research, datasets, or "
         "multi-page collection. Paginated bulk paper search (Semantic Scholar) "
-        "with advanced boolean query syntax. Supports sorting and up to 1,000 "
-        "papers per call. "
+        "with advanced boolean query syntax. Supports sorting and returns up to "
+        "1,000 papers per call, but the upstream bulk endpoint may ignore small "
+        "limit values internally; this server truncates the returned data to the "
+        "requested limit. Prefer search_papers or search_papers_semantic_scholar "
+        "for small targeted pages. "
         "Example first call: {query: 'transformers', limit: 100}. "
         "Use cursor=pagination.nextCursor from the response to fetch the next "
         "page; hasMore signals when more results exist. "

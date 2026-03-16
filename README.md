@@ -9,7 +9,7 @@ The package now uses FastMCP for tool/resource/prompt registration, Pydantic for
 ## Features
 
 - **Search papers** – Keyword search with a configurable **fallback chain**: defaults to **CORE API** first (no key required; set `CORE_API_KEY` for higher limits), then **Semantic Scholar**, then optionally **SerpApi Google Scholar** (opt-in paid), then **arXiv**. You can keep the default broker behavior, set a `preferredProvider`, override `providerOrder`, or call provider-specific `search_papers_*` tools directly. Returns a single best-effort page — not paginated.
-- **Bulk paper search** – Boolean-syntax search via `/paper/search/bulk` with cursor-based pagination (up to 1,000 papers/call); treat `pagination.nextCursor` as opaque and pass it back unchanged as `cursor`
+- **Bulk paper search** – Boolean-syntax search via `/paper/search/bulk` with cursor-based pagination (up to 1,000 returned papers/call). The upstream bulk endpoint may ignore small `limit` values internally, so this server truncates returned data to the requested limit; use `search_papers` or `search_papers_semantic_scholar` for small targeted pages. Treat `pagination.nextCursor` as opaque and pass it back unchanged as `cursor`
 - **Best-match / autocomplete** – Single best title match and typeahead completions
 - **Paper details** – Full metadata (title, authors, abstract, citations, etc.)
 - **Citations & references** – Papers that cite or are cited by a given paper; treat `pagination.nextCursor` as opaque and pass it back unchanged as `cursor`
@@ -246,6 +246,7 @@ Primary defaults for agents:
 
 - Start with `search_papers` for quick literature discovery.
 - Switch to `search_papers_bulk` for exhaustive retrieval or multi-page collection.
+- For small targeted pages, prefer `search_papers` or `search_papers_semantic_scholar` instead of `search_papers_bulk`.
 - Use `search_papers_match` or `get_paper_details` for known-item lookup.
 - Expand with `get_paper_citations`, `get_paper_references`, and `search_authors`
   once you have a paper or author anchor.
@@ -259,7 +260,7 @@ Primary defaults for agents:
 | `search_papers_semantic_scholar` | Single-page Semantic Scholar-only search with the same normalized response shape as `search_papers`. Exposes the Semantic Scholar-compatible inputs: `query`, `limit`, `fields`, `year`, `venue`, `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, and `minCitationCount`. |
 | `search_papers_serpapi`          | Single-page SerpApi Google Scholar-only search. **Requires SerpApi** (`SCHOLAR_SEARCH_ENABLE_SERPAPI=true` + `SERPAPI_API_KEY`). Exposes only the inputs SerpApi actually honors: `query`, `limit`, and `year`. |
 | `search_papers_arxiv`            | Single-page arXiv-only search with the same normalized response shape as `search_papers`. Exposes only the inputs arXiv actually honors: `query`, `limit`, and `year`. |
-| `search_papers_bulk`             | Primary exhaustive retrieval tool. Paginated bulk paper search (Semantic Scholar) with advanced boolean query syntax (up to 1,000 papers/call). Treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and do not derive/edit/fabricate it; `pagination.hasMore` signals more results. |
+| `search_papers_bulk`             | Primary exhaustive retrieval tool. Paginated bulk paper search (Semantic Scholar) with advanced boolean query syntax (up to 1,000 returned papers/call). The upstream bulk endpoint may ignore small `limit` values internally, so this server truncates returned data to the requested limit; prefer `search_papers` or `search_papers_semantic_scholar` for small targeted pages. Treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and do not derive/edit/fabricate it; `pagination.hasMore` signals more results. |
 | `search_papers_match`            | Known-item lookup for messy or partial titles; finds the single paper whose title best matches the query string |
 | `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |
 | `get_paper_details`              | Known-item lookup by identifier: get one paper by DOI, ArXiv ID, S2 ID, or URL                         |

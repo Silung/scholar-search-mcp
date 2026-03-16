@@ -214,9 +214,12 @@ class SemanticScholarClient:
     ) -> dict[str, Any]:
         """Bulk paper search with token-based pagination (``/paper/search/bulk``).
 
-        Supports up to 1,000 papers per call and advanced boolean query syntax.
-        Repeat the call with the returned ``token`` until the response contains no
-        token to paginate through up to 10,000,000 results.
+        Supports advanced boolean query syntax and provider-sized bulk pages.
+        The upstream endpoint may ignore small ``limit`` values and still return
+        a full bulk batch, so the client truncates the returned ``data`` list to
+        the requested limit after normalization. Repeat the call with the
+        returned ``token`` until the response contains no token to paginate
+        through up to 10,000,000 results.
         """
         params: dict[str, Any] = {
             "query": query,
@@ -240,7 +243,10 @@ class SemanticScholarClient:
         if min_citation_count is not None:
             params["minCitationCount"] = min_citation_count
         response = await self._request("GET", "paper/search/bulk", params=params)
-        return dump_jsonable(BulkSearchResponse.model_validate(response))
+        parsed = BulkSearchResponse.model_validate(response)
+        if len(parsed.data) > limit:
+            parsed.data = parsed.data[:limit]
+        return dump_jsonable(parsed)
 
     async def search_papers_match(
         self,

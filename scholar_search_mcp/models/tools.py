@@ -238,7 +238,12 @@ class BulkSearchPapersArgs(ToolArgsModel):
     )
     limit: int = Field(
         default=100,
-        description="Max papers per call (default 100, max 1000)",
+        description=(
+            "Max papers returned per call (default 100, max 1000). The upstream "
+            "Semantic Scholar bulk endpoint may still fetch its larger provider "
+            "batch internally, so prefer search_papers or "
+            "search_papers_semantic_scholar for small targeted pages."
+        ),
     )
 
     @field_validator("limit", mode="before")
