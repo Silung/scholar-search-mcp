@@ -284,3 +284,24 @@ async def test_search_papers_response_includes_next(
     # Uniform pagination envelope must be present
     assert result["pagination"]["hasMore"] is True
     assert result["pagination"]["nextCursor"] == "20"
+
+
+def test_search_papers_match_unwraps_nested_match_payload() -> None:
+    client = server.SemanticScholarClient()
+
+    normalized = client._normalize_match_response(
+        {
+            "paperId": None,
+            "title": None,
+            "data": [
+                {
+                    "paperId": "match-123",
+                    "title": "Wrapped best match",
+                }
+            ],
+        }
+    )
+
+    assert normalized.paper_id == "match-123"
+    assert normalized.title == "Wrapped best match"
+    assert "data" not in normalized.model_dump(by_alias=True, exclude_none=True)

@@ -50,6 +50,35 @@ async def test_list_tools_returns_expected_public_contract() -> None:
         "openAccessPdf",
         "minCitationCount",
     }
+    assert set(tool_map["search_papers_core"].inputSchema["properties"]) == {
+        "query",
+        "limit",
+        "year",
+    }
+    assert set(
+        tool_map["search_papers_semantic_scholar"].inputSchema["properties"]
+    ) == {
+        "query",
+        "limit",
+        "fields",
+        "year",
+        "venue",
+        "publicationDateOrYear",
+        "fieldsOfStudy",
+        "publicationTypes",
+        "openAccessPdf",
+        "minCitationCount",
+    }
+    assert set(tool_map["search_papers_serpapi"].inputSchema["properties"]) == {
+        "query",
+        "limit",
+        "year",
+    }
+    assert set(tool_map["search_papers_arxiv"].inputSchema["properties"]) == {
+        "query",
+        "limit",
+        "year",
+    }
     search_tags = tool_map["search_papers"].meta or {}
     semantic_tags = tool_map["search_papers_semantic_scholar"].meta or {}
     assert set(search_tags["fastmcp"]["tags"]) == {

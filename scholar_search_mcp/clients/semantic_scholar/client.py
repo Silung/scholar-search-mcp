@@ -124,6 +124,24 @@ class SemanticScholarClient:
     # Paper search
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_match_response(response: Any) -> Paper:
+        """Normalize best-match responses to one paper payload.
+
+        The upstream endpoint normally returns a single paper object, but some
+        observed responses have wrapped the match inside ``data[0]`` while also
+        including top-level paper keys with null values. Prefer the nested paper
+        payload when present so callers always receive one unambiguous
+        paper-shaped response.
+        """
+        if isinstance(response, dict):
+            nested_matches = response.get("data")
+            if isinstance(nested_matches, list):
+                for candidate in nested_matches:
+                    if isinstance(candidate, dict):
+                        return Paper.model_validate(candidate)
+        return Paper.model_validate(response)
+
     async def search_papers(
         self,
         query: str,
@@ -221,7 +239,7 @@ class SemanticScholarClient:
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
         response = await self._request("GET", "paper/search/match", params=params)
-        return dump_jsonable(Paper.model_validate(response))
+        return dump_jsonable(self._normalize_match_response(response))
 
     async def paper_autocomplete(self, query: str) -> dict[str, Any]:
         """Query completion for paper titles (``/paper/autocomplete``).

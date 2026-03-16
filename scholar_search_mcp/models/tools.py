@@ -88,14 +88,22 @@ def _validate_provider_order(
     return normalized_providers
 
 
-class SearchPapersBaseArgs(ToolArgsModel):
+class BasicSearchPapersArgs(ToolArgsModel):
     query: str = Field(description="Search query")
     limit: int = Field(default=10, description="Max results (default 10, max 100)")
-    fields: list[str] | None = Field(default=None, description="Fields to return")
     year: str | None = Field(
         default=None,
         description="Year filter, e.g. '2020-2023' or '2023'",
     )
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def clamp_limit(cls, value: int | None) -> int:
+        return _clamp_limit(value, 10, 100)
+
+
+class SearchPapersBaseArgs(BasicSearchPapersArgs):
+    fields: list[str] | None = Field(default=None, description="Fields to return")
     venue: list[str] | None = Field(
         default=None,
         description="Venue names to filter",
@@ -127,12 +135,6 @@ class SearchPapersBaseArgs(ToolArgsModel):
         alias="minCitationCount",
         description="Minimum citation count filter",
     )
-
-    @field_validator("limit", mode="before")
-    @classmethod
-    def clamp_limit(cls, value: int | None) -> int:
-        return _clamp_limit(value, 10, 100)
-
 
 class SearchPapersArgs(SearchPapersBaseArgs):
     preferred_provider: SearchProvider | None = Field(
@@ -172,6 +174,14 @@ class SearchPapersArgs(SearchPapersBaseArgs):
 
 class ProviderSearchPapersArgs(SearchPapersBaseArgs):
     """Shared provider-specific single-source paper search arguments."""
+
+
+class MinimalProviderSearchPapersArgs(BasicSearchPapersArgs):
+    """Provider-specific search args for backends that only honor query/year."""
+
+
+class SemanticProviderSearchPapersArgs(SearchPapersBaseArgs):
+    """Semantic Scholar single-source search arguments."""
 
 
 class BulkSearchPapersArgs(ToolArgsModel):
@@ -443,10 +453,10 @@ class GetCitationFormatsArgs(ToolArgsModel):
 
 TOOL_INPUT_MODELS: dict[str, type[ToolArgsModel]] = {
     "search_papers": SearchPapersArgs,
-    "search_papers_core": ProviderSearchPapersArgs,
-    "search_papers_semantic_scholar": ProviderSearchPapersArgs,
-    "search_papers_serpapi": ProviderSearchPapersArgs,
-    "search_papers_arxiv": ProviderSearchPapersArgs,
+    "search_papers_core": MinimalProviderSearchPapersArgs,
+    "search_papers_semantic_scholar": SemanticProviderSearchPapersArgs,
+    "search_papers_serpapi": MinimalProviderSearchPapersArgs,
+    "search_papers_arxiv": MinimalProviderSearchPapersArgs,
     "search_papers_bulk": BulkSearchPapersArgs,
     "search_papers_match": PaperMatchArgs,
     "paper_autocomplete": PaperAutocompleteArgs,

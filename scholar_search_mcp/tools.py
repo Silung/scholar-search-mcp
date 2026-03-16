@@ -33,29 +33,26 @@ TOOL_DESCRIPTIONS = {
     "search_papers_core": (
         "Search papers using CORE only. Returns a single page of results with the "
         "same normalized response shape as search_papers, but does not fall back "
-        "to other providers. Shared search fields are accepted for schema "
-        "consistency, but CORE only honors query, limit, and year."
+        "to other providers. Supported inputs are query, limit, and year."
     ),
     "search_papers_semantic_scholar": (
         "Search papers using Semantic Scholar only. Returns a single page of "
         "results with the same normalized response shape as search_papers, but "
         "does not fall back to other providers. This is the provider-specific "
-        "tool that honors publicationDateOrYear, fieldsOfStudy, publicationTypes, "
-        "openAccessPdf, and minCitationCount."
+        "tool that honors fields, year, venue, publicationDateOrYear, "
+        "fieldsOfStudy, publicationTypes, openAccessPdf, and minCitationCount."
     ),
     "search_papers_serpapi": (
         "Search papers using SerpApi Google Scholar only. Requires "
         "SCHOLAR_SEARCH_ENABLE_SERPAPI=true and SERPAPI_API_KEY. Returns a "
         "single page of results with the same normalized response shape as "
-        "search_papers, but does not fall back to other providers. Shared "
-        "search fields are accepted for schema consistency, but SerpApi only "
-        "honors query, limit, and year."
+        "search_papers, but does not fall back to other providers. Supported "
+        "inputs are query, limit, and year."
     ),
     "search_papers_arxiv": (
         "Search papers using arXiv only. Returns a single page of results with "
         "the same normalized response shape as search_papers, but does not fall "
-        "back to other providers. Shared search fields are accepted for schema "
-        "consistency, but arXiv only honors query, limit, and year."
+        "back to other providers. Supported inputs are query, limit, and year."
     ),
     "search_papers_bulk": (
         "Primary exhaustive retrieval tool for serious research, datasets, or "

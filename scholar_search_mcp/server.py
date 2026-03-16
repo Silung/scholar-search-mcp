@@ -52,6 +52,12 @@ Decision tree for tool selection:
 After search_papers: read brokerMetadata.nextStepHint for the recommended next move.
 To steer the broker: use preferredProvider (try-first) or providerOrder (full override).
 Provider names: core, semantic_scholar, arxiv, serpapi / serpapi_google_scholar.
+Provider-specific search inputs: search_papers_core, search_papers_serpapi, and
+search_papers_arxiv only accept query/limit/year; search_papers_semantic_scholar
+supports the wider Semantic Scholar filter set.
+Continuation rule: search_papers_bulk is the closest continuation path only for
+Semantic Scholar-style retrieval; from CORE, arXiv, or SerpApi results it is a
+Semantic Scholar pivot rather than another page from the same provider.
 
 Pagination rule: treat pagination.nextCursor as opaque — pass it back exactly as
 returned, do not derive, edit, or fabricate it, and do not reuse it across a
@@ -86,6 +92,22 @@ Set `preferredProvider` on `search_papers` to try one provider first while keepi
 the fallback chain. Set `providerOrder` to override the full broker chain for one
 call. Use `search_papers_core`, `search_papers_semantic_scholar`,
 `search_papers_serpapi`, or `search_papers_arxiv` for single-source searches.
+
+## Provider-specific tool contracts
+
+- `search_papers_core`, `search_papers_serpapi`, and `search_papers_arxiv`
+    expose only `query`, `limit`, and `year`.
+- `search_papers_semantic_scholar` exposes the wider Semantic Scholar-compatible
+    filter set.
+
+## Continuation vs pivot
+
+- `search_papers_bulk` is the closest continuation path when the task is already
+    aligned with Semantic Scholar retrieval semantics.
+- If `search_papers` returned CORE, arXiv, or SerpApi results, `search_papers_bulk`
+    is a Semantic Scholar pivot, not another page from the same provider.
+- Venue-filtered Semantic Scholar searches can also broaden when moved to bulk
+    retrieval.
 
 ## Pagination contract
 
@@ -291,6 +313,10 @@ def plan_scholar_search(
         "Start with search_papers for quick literature discovery, then read "
         "brokerMetadata.nextStepHint to decide whether to broaden, narrow, paginate, "
         "pivot providers, or pivot into authors. "
+        "Treat search_papers_bulk as the closest continuation path only when the "
+        "workflow is already aligned with Semantic Scholar retrieval semantics; if "
+        "results came from CORE, arXiv, or SerpApi, bulk retrieval is a Semantic "
+        "Scholar pivot rather than another page from the same provider. "
         "If the task is exhaustive retrieval, first N results, or multi-page "
         "collection, use search_papers_bulk. "
         "If the task is known-item lookup, use search_papers_match for messy titles "
@@ -303,7 +329,9 @@ def plan_scholar_search(
         "Use search_snippets only as a special-purpose recovery tool when quote or "
         "phrase search is needed and title/keyword search is weak. "
         "Use preferredProvider/providerOrder or provider-specific search_papers_* "
-        "tools only when source choice matters. "
+        "tools only when source choice matters. Remember that search_papers_core, "
+        "search_papers_serpapi, and search_papers_arxiv only support query, limit, "
+        "and year, while search_papers_semantic_scholar supports the wider filter set. "
         "Treat pagination.nextCursor as opaque: reuse it exactly as returned, do "
         "not edit or fabricate it, and keep it scoped to the tool/query flow that "
         "produced it."

@@ -138,6 +138,35 @@ async def test_fastmcp_client_returns_structured_tool_output(
 
 
 @pytest.mark.asyncio
+async def test_fastmcp_match_tool_unwraps_wrapped_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastmcp import Client
+
+    semantic_client = server.SemanticScholarClient()
+
+    async def fake_request(*args: object, **kwargs: object) -> dict:
+        return {
+            "paperId": None,
+            "title": None,
+            "data": [{"paperId": "wrapped-1", "title": "Wrapped best match"}],
+        }
+
+    monkeypatch.setattr(semantic_client, "_request", fake_request)
+    monkeypatch.setattr(server, "client", semantic_client)
+
+    async with Client(server.app) as client:
+        result = await client.call_tool(
+            "search_papers_match",
+            {"query": "wrapped match"},
+        )
+
+    assert result.data["paperId"] == "wrapped-1"
+    assert result.data["title"] == "Wrapped best match"
+    assert "data" not in result.data
+
+
+@pytest.mark.asyncio
 async def test_fastmcp_resource_and_prompt_support_agent_onboarding() -> None:
     from fastmcp import Client
 
@@ -181,6 +210,15 @@ def test_tool_descriptions_include_workflow_guidance() -> None:
     assert "special-purpose recovery tool" in TOOL_DESCRIPTIONS[
         "search_snippets"
     ].lower()
+    assert "Supported inputs are query, limit, and year" in TOOL_DESCRIPTIONS[
+        "search_papers_core"
+    ]
+    assert "Supported inputs are query, limit, and year" in TOOL_DESCRIPTIONS[
+        "search_papers_arxiv"
+    ]
+    assert "fields, year, venue, publicationDateOrYear" in TOOL_DESCRIPTIONS[
+        "search_papers_semantic_scholar"
+    ]
 
 
 def test_github_copilot_instructions_align_with_repo_workflow_docs() -> None:
@@ -194,5 +232,48 @@ def test_github_copilot_instructions_align_with_repo_workflow_docs() -> None:
     assert "docs/agent-handoff.md" in instructions
     assert "search_papers` for quick literature discovery" in instructions
     assert "search_papers_bulk` for exhaustive or paginated retrieval" in instructions
+    assert "not a generic" in instructions
+    assert "provider-specific tool contracts honest" in instructions
     assert "python -m pytest" in instructions
     assert "python -m ruff check ." in instructions
+
+
+def test_server_instructions_surface_continuation_and_schema_cues() -> None:
+    instructions = server.SERVER_INSTRUCTIONS
+
+    assert "search_papers_core, search_papers_serpapi, and" in instructions
+    assert "only accept query/limit/year" in instructions
+    assert "Semantic Scholar pivot rather than another page" in instructions
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_resource_mentions_pivots_and_provider_contracts() -> None:
+    from fastmcp import Client
+
+    async with Client(server.app) as client:
+        guide = await client.read_resource("guide://scholar-search/agent-workflows")
+
+    guide_text = guide[0].text
+    assert "Provider-specific tool contracts" in guide_text
+    assert "expose only `query`, `limit`, and `year`" in guide_text
+    assert "Semantic Scholar pivot, not another page" in guide_text
+
+
+@pytest.mark.asyncio
+async def test_plan_prompt_mentions_continuation_vs_pivot_and_schema_limits() -> None:
+    from fastmcp import Client
+
+    async with Client(server.app) as client:
+        plan = await client.get_prompt(
+            "plan_scholar_search",
+            {"topic": "transformers"},
+        )
+
+    prompt_text = plan.messages[0].content.text
+    assert "closest continuation path only when the workflow is already aligned" in (
+        prompt_text
+    )
+    assert "Semantic Scholar pivot rather than another page from the same provider" in (
+        prompt_text
+    )
+    assert "only support query, limit, and year" in prompt_text

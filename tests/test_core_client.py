@@ -1,4 +1,7 @@
+import pytest
+
 from scholar_search_mcp import server
+from tests.helpers import DummyResponse
 
 
 def test_core_response_to_merged_preserves_total_and_limit() -> None:
@@ -162,3 +165,96 @@ def test_core_paper_canonical_id_falls_back_to_source_id_without_doi() -> None:
     assert paper["source"] == "core"
     assert paper["sourceId"] == "11111"
     assert paper["canonicalId"] == "11111"
+
+
+@pytest.mark.asyncio
+async def test_core_search_follows_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    class CapturingAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, url: str, **kwargs):
+            captured.append({"url": url, **kwargs})
+            return DummyResponse(
+                status_code=200,
+                payload={
+                    "total_hits": 1,
+                    "results": [
+                        {
+                            "id": "core-redirect",
+                            "title": "Redirect-safe CORE result",
+                            "downloadUrl": "https://example.com/paper.pdf",
+                        }
+                    ],
+                },
+            )
+
+    monkeypatch.setattr(
+        server.httpx,
+        "AsyncClient",
+        lambda timeout: CapturingAsyncClient(),
+    )
+
+    result = await server.CoreApiClient().search("transformers")
+
+    assert result["entries"][0]["paperId"] == "core-redirect"
+    assert captured[0]["follow_redirects"] is True
+
+
+@pytest.mark.asyncio
+async def test_core_search_retries_transient_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = [
+        DummyResponse(status_code=500, payload={"message": "temporary failure"}),
+        DummyResponse(
+            status_code=200,
+            payload={
+                "total_hits": 1,
+                "results": [
+                    {
+                        "id": "core-retry",
+                        "title": "Recovered CORE result",
+                        "downloadUrl": "https://example.com/recovered.pdf",
+                    }
+                ],
+            },
+        ),
+    ]
+    sleep_calls: list[float] = []
+
+    class RetryAsyncClient:
+        def __init__(self, queued_responses: list[DummyResponse]) -> None:
+            self._responses = queued_responses
+            self.calls = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, url: str, **kwargs):
+            response = self._responses[self.calls]
+            self.calls += 1
+            return response
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    retry_client = RetryAsyncClient(responses)
+    monkeypatch.setattr(server.httpx, "AsyncClient", lambda timeout: retry_client)
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    result = await server.CoreApiClient().search("transformers")
+
+    assert retry_client.calls == 2
+    assert sleep_calls == [0.5]
+    assert result["entries"][0]["paperId"] == "core-retry"

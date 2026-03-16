@@ -76,14 +76,52 @@ def _metadata(
     provider_used: str,
     attempts: list[BrokerAttempt],
     ss_only_filters: list[str],
+    venue: Sequence[str] | None = None,
+    preferred_provider: SearchProvider | None = None,
+    provider_order: Sequence[SearchProvider] | None = None,
 ) -> BrokerMetadata:
     """Build consistent broker metadata for ``search_papers`` responses."""
+    routing_steered = preferred_provider is not None or provider_order is not None
+    provider_labels = {
+        "core": "CORE",
+        "semantic_scholar": "Semantic Scholar",
+        "serpapi_google_scholar": "SerpApi Google Scholar",
+        "arxiv": "arXiv",
+    }
+
+    if provider_used == "semantic_scholar":
+        if venue:
+            bulk_guidance = (
+                "search_papers_bulk can broaden this into a larger Semantic Scholar "
+                "retrieval flow, but that is a semantic pivot because bulk search "
+                "does not preserve venue filtering. "
+            )
+        elif routing_steered:
+            bulk_guidance = (
+                "If you need many more Semantic Scholar results for the same topic, "
+                "switch to search_papers_bulk. That is the closest continuation path, "
+                "but it leaves the brokered routing preferences behind. "
+            )
+        else:
+            bulk_guidance = (
+                "If you need many more Semantic Scholar results for the same topic, "
+                "switch to search_papers_bulk. That is the closest continuation path. "
+            )
+    elif provider_used in provider_labels:
+        bulk_guidance = (
+            "If you need many more results, search_papers_bulk is a Semantic Scholar "
+            f"pivot rather than another page from {provider_labels[provider_used]}. "
+        )
+    else:
+        bulk_guidance = ""
+
     if provider_used == "serpapi_google_scholar":
         next_step_hint = (
             "Results are from SerpApi Google Scholar. Papers that include "
             "scholarResultId can be passed to get_paper_citation_formats for "
             "MLA, APA, BibTeX, and other export formats. "
-            "To get more pages use search_papers_bulk. "
+            + bulk_guidance
+            +
             "To expand from a paper use get_paper_citations or get_paper_references."
         )
     elif provider_used == "none":
@@ -93,7 +131,9 @@ def _metadata(
         )
     else:
         next_step_hint = (
-            "Inspect the results. To get more pages use search_papers_bulk. "
+            "Inspect the results. "
+            + bulk_guidance
+            +
             "To expand from a paper use get_paper_citations or get_paper_references."
         )
     return BrokerMetadata(
@@ -454,6 +494,9 @@ async def search_papers_with_fallback(
                 provider_used=provider_used,
                 attempts=attempts,
                 ss_only_filters=ss_only_filters,
+                venue=venue,
+                preferred_provider=preferred_provider,
+                provider_order=provider_order,
             )
 
     if result is None:
@@ -463,6 +506,9 @@ async def search_papers_with_fallback(
                     provider_used="none",
                     attempts=attempts,
                     ss_only_filters=ss_only_filters,
+                    venue=venue,
+                    preferred_provider=preferred_provider,
+                    provider_order=provider_order,
                 ),
             )
         )
