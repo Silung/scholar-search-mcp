@@ -106,6 +106,10 @@ def test_agentic_workflow_documentation_stays_in_sync() -> None:
     assert "Install gh-aw" in validate_workflow
     assert "GH_TOKEN: ${{ github.token }}" in validate_workflow
     assert compile_command in validate_workflow
+    assert (
+        "pre-commit run --files .github/workflows/test-scholar-search.lock.yml || true"
+        in validate_workflow
+    )
     assert "pre-commit run --files .github/workflows/test-scholar-search.lock.yml" in (
         validate_workflow
     )

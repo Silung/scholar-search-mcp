@@ -43,6 +43,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh aw compile test-scholar-search --dir .github/workflows
+          pre-commit run --files .github/workflows/test-scholar-search.lock.yml || true
           pre-commit run --files .github/workflows/test-scholar-search.lock.yml
           git diff --exit-code -- .github/workflows/test-scholar-search.lock.yml
 
