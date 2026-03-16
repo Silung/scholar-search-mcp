@@ -52,6 +52,9 @@ search_papers(query="large language model alignment", limit=10)
 2. Treat `pagination.nextCursor` as opaque and pass it back as `cursor`
    unchanged.
 3. Continue until `pagination.hasMore` is false.
+4. For small targeted pages, prefer `search_papers` or
+   `search_papers_semantic_scholar`; the upstream bulk endpoint may ignore small
+   `limit` values internally, and this server only truncates the returned data.
 
 **Example request**: "Get me all papers on RLHF published since 2020"
 
@@ -66,6 +69,7 @@ search_papers_bulk(query="reinforcement learning from human feedback", year="202
 
 - Cursor handling stays explicit and safe.
 - The agent does not misuse single-page tools for bulk collection.
+- The agent does not misuse bulk search for small targeted pages.
 - Pagination state is explained in user-facing language.
 
 ### 3. Citation chasing

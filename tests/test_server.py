@@ -202,6 +202,9 @@ def test_tool_descriptions_include_workflow_guidance() -> None:
 
     assert "quick literature discovery" in TOOL_DESCRIPTIONS["search_papers"]
     assert "exhaustive retrieval" in TOOL_DESCRIPTIONS["search_papers_bulk"]
+    assert "prefer search_papers or search_papers_semantic_scholar" in (
+        TOOL_DESCRIPTIONS["search_papers_bulk"].lower()
+    )
     assert "Known-item lookup" in TOOL_DESCRIPTIONS["search_papers_match"]
     assert "Known-item lookup" in TOOL_DESCRIPTIONS["get_paper_details"]
     assert "cite this paper (cited by)" in TOOL_DESCRIPTIONS["get_paper_citations"]
@@ -244,6 +247,7 @@ def test_server_instructions_surface_continuation_and_schema_cues() -> None:
     assert "search_papers_core, search_papers_serpapi, and" in instructions
     assert "only accept query/limit/year" in instructions
     assert "Semantic Scholar pivot rather than another page" in instructions
+    assert "prefer search_papers or search_papers_semantic_scholar" in instructions
 
 
 @pytest.mark.asyncio
@@ -257,6 +261,7 @@ async def test_agent_workflow_resource_mentions_pivots_and_provider_contracts() 
     assert "Provider-specific tool contracts" in guide_text
     assert "expose only `query`, `limit`, and `year`" in guide_text
     assert "Semantic Scholar pivot, not another page" in guide_text
+    assert "For small targeted pages" in guide_text
 
 
 @pytest.mark.asyncio
@@ -277,3 +282,4 @@ async def test_plan_prompt_mentions_continuation_vs_pivot_and_schema_limits() ->
         prompt_text
     )
     assert "only support query, limit, and year" in prompt_text
+    assert "prefer search_papers or search_papers_semantic_scholar" in prompt_text

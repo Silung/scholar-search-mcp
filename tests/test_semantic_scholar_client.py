@@ -119,7 +119,57 @@ async def test_get_recommendations_uses_recommendations_base_url(
 
 
 @pytest.mark.asyncio
-async def test_semantic_scholar_request_repaces_on_429_retry(
+async def test_search_papers_bulk_truncates_provider_oversized_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bulk search must honor small limits even if the provider ignores them."""
+
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    oversized_batch = [
+        {"paperId": f"bulk-{index}", "title": f"Paper {index}"}
+        for index in range(10)
+    ]
+
+    class BulkAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return DummyResponse(
+                status_code=200,
+                payload={
+                    "total": 5000,
+                    "token": "tok-next",
+                    "data": oversized_batch,
+                },
+            )
+
+    monkeypatch.setattr(server.httpx, "AsyncClient", lambda timeout: BulkAsyncClient())
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.search_papers_bulk("graph neural networks", limit=5)
+
+    assert len(result["data"]) == 5
+    assert [paper["paperId"] for paper in result["data"]] == [
+        "bulk-0",
+        "bulk-1",
+        "bulk-2",
+        "bulk-3",
+        "bulk-4",
+    ]
+    assert result["pagination"]["hasMore"] is True
+    assert result["pagination"]["nextCursor"] == "tok-next"
+    assert result["token"] == "tok-next"
+
+
+@pytest.mark.asyncio
+async def test_semantic_scholar_request_retries_with_pacing_on_429(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The pacing guard must fire before every attempt, including 429 retries."""

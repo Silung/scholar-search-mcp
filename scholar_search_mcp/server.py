@@ -42,7 +42,8 @@ SERVER_INSTRUCTIONS = """
 Decision tree for tool selection:
 
 1. QUICK DISCOVERY → search_papers (brokered, single page, returns brokerMetadata)
-2. EXHAUSTIVE / MULTI-PAGE → search_papers_bulk (cursor-paginated, up to 1 000/call)
+2. EXHAUSTIVE / MULTI-PAGE → search_papers_bulk
+   (cursor-paginated, up to 1 000 returned/call)
 3. KNOWN ITEM (messy title) → search_papers_match
 4. KNOWN ITEM (DOI / arXiv / URL) → get_paper_details
 5. CITATION EXPANSION → get_paper_citations (cited-by) or get_paper_references (refs)
@@ -58,6 +59,8 @@ supports the wider Semantic Scholar filter set.
 Continuation rule: search_papers_bulk is the closest continuation path only for
 Semantic Scholar-style retrieval; from CORE, arXiv, or SerpApi results it is a
 Semantic Scholar pivot rather than another page from the same provider.
+For small targeted pages, prefer search_papers or search_papers_semantic_scholar;
+Semantic Scholar's bulk endpoint may ignore small limits internally.
 
 Pagination rule: treat pagination.nextCursor as opaque — pass it back exactly as
 returned, do not derive, edit, or fabricate it, and do not reuse it across a
@@ -74,6 +77,8 @@ AGENT_WORKFLOW_GUIDE = """
   paginate, or pivot.
 - **Exhaustive / multi-page retrieval**: `search_papers_bulk` with cursor loop until
   `pagination.hasMore` is false.
+- **Small targeted Semantic Scholar page**: `search_papers_semantic_scholar` (or
+  `search_papers` if brokered discovery is fine) instead of bulk retrieval.
 - **Known-item lookup (messy title)**: `search_papers_match`
 - **Known-item lookup (DOI / arXiv / URL / S2 ID)**: `get_paper_details`
 - **Citation chasing (cited-by expansion)**: `get_paper_citations`
@@ -108,6 +113,9 @@ call. Use `search_papers_core`, `search_papers_semantic_scholar`,
     is a Semantic Scholar pivot, not another page from the same provider.
 - Venue-filtered Semantic Scholar searches can also broaden when moved to bulk
     retrieval.
+- For small targeted pages, prefer `search_papers` or
+    `search_papers_semantic_scholar`; the upstream bulk endpoint may ignore small
+    `limit` values internally.
 
 ## Pagination contract
 
@@ -318,7 +326,9 @@ def plan_scholar_search(
         "results came from CORE, arXiv, or SerpApi, bulk retrieval is a Semantic "
         "Scholar pivot rather than another page from the same provider. "
         "If the task is exhaustive retrieval, first N results, or multi-page "
-        "collection, use search_papers_bulk. "
+        "collection, use search_papers_bulk. For small targeted pages, prefer "
+        "search_papers or search_papers_semantic_scholar because the upstream "
+        "bulk endpoint may ignore small limit values internally. "
         "If the task is known-item lookup, use search_papers_match for messy titles "
         "and get_paper_details for DOI, arXiv ID, URL, or canonical IDs. "
         "If the task starts from a known paper, use get_paper_citations for cited-by "
