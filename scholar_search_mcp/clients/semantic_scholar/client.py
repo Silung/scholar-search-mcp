@@ -38,6 +38,12 @@ _AUTHOR_QUERY_WHITESPACE_PATTERN = re.compile(r"\s+")
 _TITLE_LOOKUP_QUOTES_PATTERN = re.compile(r'["“”‘’`]+')
 _TITLE_LOOKUP_PUNCTUATION_PATTERN = re.compile(r"[-–—:;,/?!()]+")
 _TITLE_LOOKUP_KEY_PATTERN = re.compile(r"[^0-9a-z]+")
+# Keep fuzzy-title recovery conservative: exact normalized matches win, and
+# otherwise require very high similarity to avoid promoting unrelated papers.
+_TITLE_MATCH_SIMILARITY_THRESHOLD = 0.92
+# Fallback only needs a small relevance-ranked window because we re-score titles
+# locally and want to keep degraded exact-match recovery cheap.
+_TITLE_MATCH_FALLBACK_LIMIT = 10
 
 
 class SemanticScholarClient:
@@ -241,7 +247,7 @@ class SemanticScholarClient:
             return None
 
         exactish, ratio = best_score
-        if exactish > 0 or ratio >= 0.92:
+        if exactish > 0 or ratio >= _TITLE_MATCH_SIMILARITY_THRESHOLD:
             return best_candidate
         return None
 
@@ -255,7 +261,7 @@ class SemanticScholarClient:
             try:
                 fallback_response = await self.search_papers(
                     candidate_query,
-                    limit=10,
+                    limit=_TITLE_MATCH_FALLBACK_LIMIT,
                     fields=fields,
                 )
             except httpx.HTTPStatusError:
