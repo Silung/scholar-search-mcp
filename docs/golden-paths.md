@@ -143,8 +143,44 @@ search_authors(query="Yoshua Bengio", limit=5)
 - **Budget-aware searching**: steer `search_papers` with `preferredProvider` or
   `providerOrder` before falling back to provider-specific tools.
 
+## Recent UX Fixes
+
+These rough edges from the prior UX review are now fixed and should be treated
+as part of the intended agent contract.
+
+### 1. `search_papers_match` now resolves to one paper payload
+
+- The Semantic Scholar match path now normalizes wrapped responses to a single
+  paper-shaped object.
+- Agents should no longer need to defensively inspect `data[0]` for the best
+  match.
+
+### 2. Default CORE first hop follows redirects
+
+- The default broker path now follows predictable CORE redirects instead of
+  recording an avoidable first-provider failure.
+- Treat new redirect-driven fallback in `brokerMetadata.attemptedProviders` as a
+  regression if it reappears.
+
+### 3. `nextStepHint` now distinguishes continuation from pivots
+
+- Semantic Scholar results describe `search_papers_bulk` as the closest
+  continuation path only when that preserves the research intent reasonably
+  well.
+- CORE, arXiv, and SerpApi results now describe `search_papers_bulk` as a
+  Semantic Scholar pivot rather than another page from the same provider.
+- Venue-filtered Semantic Scholar searches explicitly warn that bulk retrieval
+  broadens the query semantics.
+
+### 4. Provider-specific schemas now match provider capability
+
+- `search_papers_core`, `search_papers_serpapi`, and `search_papers_arxiv`
+  expose only `query`, `limit`, and `year`.
+- `search_papers_semantic_scholar` continues to expose the wider Semantic
+  Scholar-compatible filter set.
+
 ## Future Work
 
 - Consider per-request or per-session provider preferences for budget-aware use.
-- Add success-metric tests that assert workflow cues stay visible in tool
-  descriptions and onboarding resources.
+- Decide whether retry-recovered provider behavior should remain internal or be
+  surfaced to agents as part of the broker story.

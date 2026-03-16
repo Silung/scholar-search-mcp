@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from ...constants import CORE_API_BASE
 from ...models import Author, CoreSearchResponse, Paper, dump_jsonable
-from ...transport import httpx
+from ...transport import asyncio, httpx
 
 logger = logging.getLogger("scholar-search-mcp")
 
@@ -13,9 +13,17 @@ logger = logging.getLogger("scholar-search-mcp")
 class CoreApiClient:
     """CORE API v3 client (https://api.core.ac.uk/docs/v3)."""
 
-    def __init__(self, api_key: Optional[str] = None, timeout: float = 30.0):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        timeout: float = 30.0,
+        max_retries: int = 2,
+        base_delay: float = 0.5,
+    ):
         self.api_key = api_key
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.base_delay = base_delay
 
     async def search(
         self,
@@ -53,12 +61,26 @@ class CoreApiClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(
-                    CORE_API_BASE,
-                    params=params,
-                    headers=headers,
-                )
-                response.raise_for_status()
+                for attempt in range(self.max_retries + 1):
+                    response = await client.get(
+                        CORE_API_BASE,
+                        params=params,
+                        headers=headers,
+                        follow_redirects=True,
+                    )
+                    if response.status_code >= 500 and attempt < self.max_retries:
+                        delay = self.base_delay * (2**attempt)
+                        logger.warning(
+                            "CORE search returned %s, retrying in %.1fs (%s/%s)",
+                            response.status_code,
+                            delay,
+                            attempt + 1,
+                            self.max_retries,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    response.raise_for_status()
+                    break
         except Exception as exc:
             logger.warning("CORE search request failed: %s", exc)
             raise

@@ -225,6 +225,9 @@ def test_broker_metadata_next_step_hint_is_provider_specific() -> None:
     )
     assert "scholarResultId" in serpapi_meta.next_step_hint
     assert "get_paper_citation_formats" in serpapi_meta.next_step_hint
+    assert "pivot rather than another page from SerpApi Google Scholar" in (
+        serpapi_meta.next_step_hint
+    )
 
     none_meta = _metadata(
         provider_used="none",
@@ -240,6 +243,23 @@ def test_broker_metadata_next_step_hint_is_provider_specific() -> None:
     )
     assert "search_papers_bulk" in ss_meta.next_step_hint
     assert "get_paper_citations" in ss_meta.next_step_hint
+    assert "closest continuation path" in ss_meta.next_step_hint
+
+    venue_meta = _metadata(
+        provider_used="semantic_scholar",
+        attempts=[],
+        ss_only_filters=[],
+        venue=["NeurIPS"],
+    )
+    assert "semantic pivot" in venue_meta.next_step_hint
+    assert "does not preserve venue filtering" in venue_meta.next_step_hint
+
+    core_meta = _metadata(
+        provider_used="core",
+        attempts=[],
+        ss_only_filters=[],
+    )
+    assert "pivot rather than another page from CORE" in core_meta.next_step_hint
 
 
 def test_broker_metadata_next_step_hint_in_serialized_response() -> None:

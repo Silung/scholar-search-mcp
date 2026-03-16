@@ -26,6 +26,11 @@ Before changing code, read these files in order:
   - `search_snippets` only as a recovery tool
 - Prefer progressive disclosure over adding overlapping entry points.
 - Keep provider complexity explainable but mostly hidden behind the brokered path.
+- Keep continuation semantics explicit: `search_papers_bulk` is not a generic
+  "next page" for brokered results, and should be described as a pivot whenever
+  it changes provider or filter semantics.
+- Keep provider-specific tool contracts honest: CORE, SerpApi, and arXiv-only
+  search surfaces should not casually advertise filters they do not honor.
 
 ## Durable Planning and Progress
 

@@ -6,9 +6,9 @@ from .clients.serpapi import SerpApiKeyMissingError
 from .models import TOOL_INPUT_MODELS, CitationFormatsResponse, dump_jsonable
 from .models.common import CitationFormat, ExportLink
 from .models.tools import (
+    BasicSearchPapersArgs,
     GetCitationFormatsArgs,
     SearchPapersArgs,
-    SearchPapersBaseArgs,
     SearchProvider,
 )
 from .search import search_papers_with_fallback
@@ -346,20 +346,24 @@ async def dispatch_tool(
 
     if name in PROVIDER_SEARCH_TOOLS:
         provider_arguments = cast(
-            SearchPapersBaseArgs,
+            BasicSearchPapersArgs,
             TOOL_INPUT_MODELS[name].model_validate(arguments),
         )
         return await search_papers_with_fallback(
             query=provider_arguments.query,
             limit=provider_arguments.limit,
             year=provider_arguments.year,
-            fields=provider_arguments.fields,
-            venue=provider_arguments.venue,
-            publication_date_or_year=provider_arguments.publication_date_or_year,
-            fields_of_study=provider_arguments.fields_of_study,
-            publication_types=provider_arguments.publication_types,
-            open_access_pdf=provider_arguments.open_access_pdf,
-            min_citation_count=provider_arguments.min_citation_count,
+            fields=getattr(provider_arguments, "fields", None),
+            venue=getattr(provider_arguments, "venue", None),
+            publication_date_or_year=getattr(
+                provider_arguments, "publication_date_or_year", None
+            ),
+            fields_of_study=getattr(provider_arguments, "fields_of_study", None),
+            publication_types=getattr(provider_arguments, "publication_types", None),
+            open_access_pdf=getattr(provider_arguments, "open_access_pdf", None),
+            min_citation_count=getattr(
+                provider_arguments, "min_citation_count", None
+            ),
             enable_core=enable_core,
             enable_semantic_scholar=enable_semantic_scholar,
             enable_arxiv=enable_arxiv,
