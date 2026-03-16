@@ -1,6 +1,7 @@
 import pytest
 
 from scholar_search_mcp import server
+from scholar_search_mcp.models.common import BulkSearchResponse, dump_jsonable
 from tests.helpers import RecordingSemanticClient
 
 
@@ -12,8 +13,6 @@ async def test_search_papers_bulk_returns_structured_next_cursor(
 
     class PaginatedBulkClient(RecordingSemanticClient):
         async def search_papers_bulk(self, **kwargs) -> dict:
-            from scholar_search_mcp.models.common import BulkSearchResponse, dump_jsonable
-
             self.calls.append(("search_papers_bulk", kwargs))
             return dump_jsonable(
                 BulkSearchResponse.model_validate(
@@ -117,8 +116,6 @@ async def test_bulk_search_cursor_round_trips_for_same_query(
 
     class PaginatedBulkClient(RecordingSemanticClient):
         async def search_papers_bulk(self, **kwargs) -> dict:
-            from scholar_search_mcp.models.common import BulkSearchResponse, dump_jsonable
-
             nonlocal call_count
             call_count += 1
             self.calls.append(("search_papers_bulk", kwargs))
@@ -170,8 +167,6 @@ async def test_bulk_search_cursor_rejects_cross_query_reuse(
 
     class PaginatedBulkClient(RecordingSemanticClient):
         async def search_papers_bulk(self, **kwargs) -> dict:
-            from scholar_search_mcp.models.common import BulkSearchResponse, dump_jsonable
-
             self.calls.append(("search_papers_bulk", kwargs))
             return dump_jsonable(
                 BulkSearchResponse.model_validate(
