@@ -102,6 +102,10 @@ search_papers_match(query="Attention Is All You Need")
 2. Use `get_paper_details` for DOI, arXiv ID, URL, or canonical IDs.
 3. Fall back to `search_papers` only when the user is really asking a topical
    question rather than an item lookup.
+4. Treat a structured no-match from `search_papers_match` as a signal that the
+   item may be punctuation-variant metadata, a dissertation, software release,
+   report, or other output outside the indexed paper surface. Verify externally
+   when needed.
 
 **Example requests and tool choices**:
 - "Find the paper called something like 'Scaling Laws for Neural Language Models'"
@@ -127,6 +131,9 @@ search_papers_match(query="Attention Is All You Need")
    prefer `paper.canonicalId` or DOI for the `paper_id` you pass into Semantic
    Scholar expansion tools; provider-specific brokered IDs such as raw CORE
    `paperId`/`sourceId` are not portable.
+6. For common names, add affiliation, coauthor, venue, or topic clues in the
+   initial `search_authors` query, then use profile metadata to confirm the
+   right person before reading papers.
 
 **Example request**: "What has Yoshua Bengio published recently?"
 
@@ -167,6 +174,9 @@ as part of the intended agent contract.
   paper-shaped object.
 - Agents should no longer need to defensively inspect `data[0]` for the best
   match.
+- Exact-match 400/404 misses now fall back to fuzzy Semantic Scholar title
+  search, and exhausted match attempts return a structured no-match payload
+  instead of surfacing a raw provider 404.
 
 ### 2. Default CORE first hop follows redirects
 
@@ -196,10 +206,19 @@ as part of the intended agent contract.
 
 - `search_authors` normalizes plain-text exact-name punctuation before calling
   Semantic Scholar.
+- Common-name author workflows now explicitly recommend affiliation, coauthor,
+  venue, and topic clues before profile confirmation.
 - Author-profile tools now describe the supported author fields explicitly.
 - Semantic Scholar paper-expansion tools now tell agents to prefer
   `paper.canonicalId`, DOI, or a Semantic Scholar `paperId` instead of a
   provider-specific brokered ID.
+
+### 6. Snippet-search provider failures now degrade cleanly
+
+- `search_snippets` now returns an empty degraded payload with retry guidance
+  when Semantic Scholar rejects a phrase query or returns a transient 5xx.
+- Agents should prefer `search_papers_match` or `search_papers` before falling
+  back to snippet search for quote recovery.
 
 ## Future Work
 

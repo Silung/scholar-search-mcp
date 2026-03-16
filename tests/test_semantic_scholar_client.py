@@ -448,6 +448,140 @@ def test_search_papers_match_unwraps_nested_match_payload() -> None:
     assert "data" not in normalized.model_dump(by_alias=True, exclude_none=True)
 
 
+@pytest.mark.asyncio
+async def test_search_papers_match_falls_back_to_fuzzy_search_on_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    requests: list[tuple[str, str]] = []
+    responses = [
+        httpx.Response(
+            status_code=404,
+            request=httpx.Request(
+                "GET", "https://api.semanticscholar.org/graph/v1/paper/search/match"
+            ),
+        ),
+        httpx.Response(
+            status_code=200,
+            request=httpx.Request(
+                "GET", "https://api.semanticscholar.org/graph/v1/paper/search"
+            ),
+            json={
+                "total": 1,
+                "offset": 0,
+                "data": [
+                    {
+                        "paperId": "paper-1",
+                        "title": (
+                            "Oyster Cultch Recruit Patterns Provide New Insight "
+                            "Into the Restoration and Management of a Critical "
+                            "Resource"
+                        ),
+                    }
+                ],
+            },
+        ),
+    ]
+
+    class SequencedAsyncClient:
+        def __init__(self, queued_responses: list[httpx.Response]) -> None:
+            self._responses = queued_responses
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, *, url: str, params, **kwargs):
+            requests.append((url, params["query"]))
+            return self._responses.pop(0)
+
+    monkeypatch.setattr(
+        server.httpx,
+        "AsyncClient",
+        lambda timeout: SequencedAsyncClient(responses),
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.search_papers_match(
+        "Oyster Cultch-Recruit Patterns Provide New Insight Into the "
+        "Restoration and Management of a Critical Resource"
+    )
+
+    assert result["paperId"] == "paper-1"
+    assert result["matchFound"] is True
+    assert result["matchStrategy"] == "fuzzy_search"
+    assert requests[0][0].endswith("/paper/search/match")
+    assert requests[1][0].endswith("/paper/search")
+
+
+@pytest.mark.asyncio
+async def test_search_papers_match_returns_structured_no_match_payload_after_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    responses = [
+        httpx.Response(
+            status_code=404,
+            request=httpx.Request(
+                "GET", "https://api.semanticscholar.org/graph/v1/paper/search/match"
+            ),
+        ),
+        httpx.Response(
+            status_code=200,
+            request=httpx.Request(
+                "GET", "https://api.semanticscholar.org/graph/v1/paper/search"
+            ),
+            json={"total": 1, "offset": 0, "data": [{"title": "Unrelated result"}]},
+        ),
+        httpx.Response(
+            status_code=200,
+            request=httpx.Request(
+                "GET", "https://api.semanticscholar.org/graph/v1/paper/search"
+            ),
+            json={"total": 0, "offset": 0, "data": []},
+        ),
+    ]
+
+    class SequencedAsyncClient:
+        def __init__(self, queued_responses: list[httpx.Response]) -> None:
+            self._responses = queued_responses
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return self._responses.pop(0)
+
+    monkeypatch.setattr(
+        server.httpx,
+        "AsyncClient",
+        lambda timeout: SequencedAsyncClient(responses),
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.search_papers_match("ezMCDA: An Interactive Dashboard")
+
+    assert result["paperId"] is None
+    assert result["matchFound"] is False
+    assert result["matchStrategy"] == "none"
+    assert "outside the indexed paper surface" in result["message"]
+    assert result["normalizedQueriesTried"] == [
+        "ezMCDA: An Interactive Dashboard",
+        "ezMCDA An Interactive Dashboard",
+    ]
+
+
 def test_normalize_author_search_query_falls_back_to_original_when_empty() -> None:
     client = server.SemanticScholarClient()
 
@@ -490,6 +624,42 @@ async def test_search_authors_normalizes_exact_name_punctuation(
 
     assert captured_queries == ["Ryan L Perroy"]
     assert result["data"][0]["authorId"] == "9191855"
+
+
+@pytest.mark.asyncio
+async def test_search_authors_400_error_mentions_common_name_disambiguation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    response = httpx.Response(
+        status_code=400,
+        request=httpx.Request(
+            "GET", "https://api.semanticscholar.org/graph/v1/author/search"
+        ),
+    )
+
+    class RejectingAuthorSearchAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return response
+
+    monkeypatch.setattr(
+        server.httpx,
+        "AsyncClient",
+        lambda timeout: RejectingAuthorSearchAsyncClient(),
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    with pytest.raises(ValueError, match="affiliation, coauthor, venue, or topic"):
+        await sc.search_authors('"Matthew Richardson" "SWCA"')
 
 
 @pytest.mark.asyncio
@@ -554,3 +724,43 @@ async def test_get_paper_authors_surfaces_portability_hint_for_404(
     sc = server.SemanticScholarClient()
     with pytest.raises(ValueError, match="paper.canonicalId or a DOI"):
         await sc.get_paper_authors("170189535")
+
+
+@pytest.mark.asyncio
+async def test_search_snippets_degrades_provider_400_to_empty_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    response = httpx.Response(
+        status_code=400,
+        request=httpx.Request(
+            "GET", "https://api.semanticscholar.org/graph/v1/snippet/search"
+        ),
+    )
+
+    class RejectingSnippetAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return response
+
+    monkeypatch.setattr(
+        server.httpx,
+        "AsyncClient",
+        lambda timeout: RejectingSnippetAsyncClient(),
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.search_snippets('"exact phrase query"')
+
+    assert result["data"] == []
+    assert result["degraded"] is True
+    assert result["providerStatusCode"] == 400
+    assert "search_papers_match/search_papers" in result["message"]

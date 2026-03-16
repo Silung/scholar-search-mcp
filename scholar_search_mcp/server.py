@@ -53,6 +53,10 @@ Decision tree for tool selection:
 After search_papers: read brokerMetadata.nextStepHint for the recommended next move.
 For Semantic Scholar expansion tools, prefer paper.canonicalId, DOI, or a
 Semantic Scholar paperId rather than a provider-specific brokered id.
+If search_papers_match returns no match, the item may be a dissertation,
+software release, report, or other output outside the indexed paper surface.
+For common-name author lookup, add affiliation, coauthor, venue, or topic clues
+before expanding into get_author_info/get_author_papers.
 To steer the broker: use preferredProvider (try-first) or providerOrder (full override).
 Provider names: core, semantic_scholar, arxiv, serpapi / serpapi_google_scholar.
 Provider-specific search inputs: search_papers_core, search_papers_serpapi, and
@@ -87,11 +91,19 @@ AGENT_WORKFLOW_GUIDE = """
 - **Citation chasing (backward references)**: `get_paper_references`
 - **Author-centric workflows**: `search_authors` → `get_author_info` →
   `get_author_papers`; pivot to `get_paper_authors` if starting from a paper.
+- **Common-name author disambiguation**: add affiliation, coauthor, venue, or
+  topic clues to `search_authors`, then confirm identity with
+  `get_author_info`/`get_author_papers`.
 - **Cross-provider ID portability**: for Semantic Scholar expansion tools prefer
   `paper.canonicalId`, DOI, or a Semantic Scholar `paperId`; brokered provider
   IDs such as raw CORE `paperId`/`sourceId` are not portable.
+- **Outside-paper outputs**: dissertations, software releases, reports, and
+  other grey literature may fall outside the indexed paper surface even when a
+  title is real; treat a structured no-match from `search_papers_match` as a
+  signal to verify externally.
 - **Quote or snippet validation**: `search_snippets` — special-purpose recovery
-  tool only when title/keyword search is weak.
+  tool only when title/keyword search is weak; provider 4xx/5xx errors degrade
+  to empty results with retry guidance.
 - **Citation export**: `get_paper_citation_formats` — pass
   `result_id=paper.scholarResultId` (not `paper.sourceId`) from any
   `serpapi_google_scholar` result to get MLA, APA, BibTeX, etc.
@@ -335,16 +347,23 @@ def plan_scholar_search(
         "search_papers or search_papers_semantic_scholar because the upstream "
         "bulk endpoint may ignore small limit values internally. "
         "If the task is known-item lookup, use search_papers_match for messy titles "
-        "and get_paper_details for DOI, arXiv ID, URL, or canonical IDs. "
+        "and get_paper_details for DOI, arXiv ID, URL, or canonical IDs. Treat a "
+        "structured no-match from search_papers_match as a hint that the item may "
+        "be a dissertation, software release, report, or other output outside the "
+        "indexed paper surface. "
         "If the task starts from a known paper, use get_paper_citations for cited-by "
         "expansion and get_paper_references for backward references, and explain "
         "that direction clearly. "
         "For author-centric workflows use search_authors, get_author_info, and "
-        "get_author_papers. For Semantic Scholar expansion tools prefer "
+        "get_author_papers. For common names, add affiliation, coauthor, venue, "
+        "or topic clues before confirming the best candidate. For Semantic "
+        "Scholar expansion tools prefer "
         "paper.canonicalId, DOI, or a Semantic Scholar paperId rather than a "
         "provider-specific brokered id. "
         "Use search_snippets only as a special-purpose recovery tool when quote or "
-        "phrase search is needed and title/keyword search is weak. "
+        "phrase search is needed and title/keyword search is weak; if the provider "
+        "rejects that query, expect an empty degraded response rather than a raw "
+        "4xx/5xx. "
         "Use preferredProvider/providerOrder or provider-specific search_papers_* "
         "tools only when source choice matters. Remember that search_papers_core, "
         "search_papers_serpapi, and search_papers_arxiv only support query, limit, "

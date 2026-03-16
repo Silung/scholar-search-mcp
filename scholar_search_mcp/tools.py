@@ -69,7 +69,11 @@ TOOL_DESCRIPTIONS = {
     ),
     "search_papers_match": (
         "Known-item lookup for messy or partial titles. Find the single paper "
-        "whose title best matches the query string."
+        "whose title best matches the query string. If the upstream exact-match "
+        "endpoint misses a punctuation-heavy title, the server falls back to a "
+        "fuzzy Semantic Scholar title search instead of surfacing a raw 404. "
+        "A no-match payload can still mean the item is a dissertation, software "
+        "release, report, or other output outside the indexed paper surface."
     ),
     "paper_autocomplete": (
         "Return paper title completions for a partial query string."
@@ -119,7 +123,8 @@ TOOL_DESCRIPTIONS = {
         "Primary author-search entry point. Search for authors by name before "
         "expanding to get_author_info or get_author_papers. Plain-text only: the "
         "server normalizes exact-name punctuation such as initials before calling "
-        "Semantic Scholar. "
+        "Semantic Scholar. For common names, add affiliation, coauthor, venue, or "
+        "topic clues, then confirm identity with get_author_info/get_author_papers. "
         "Pass cursor=pagination.nextCursor to continue; hasMore signals more pages. "
         f"{OPAQUE_CURSOR_CONTRACT}"
     ),
@@ -127,7 +132,9 @@ TOOL_DESCRIPTIONS = {
     "search_snippets": (
         "Special-purpose recovery tool for quote-like or phrase-based retrieval "
         "when title or keyword search is weak. Returns snippet text plus paper "
-        "metadata and relevance score."
+        "metadata and relevance score. If Semantic Scholar rejects the phrase "
+        "query or is temporarily unavailable, the server degrades to an empty "
+        "result with retry guidance instead of surfacing a raw provider 4xx/5xx."
     ),
     "get_paper_recommendations": "Get similar paper recommendations for a paper.",
     "get_paper_recommendations_post": (

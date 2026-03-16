@@ -190,11 +190,16 @@ async def test_fastmcp_resource_and_prompt_support_agent_onboarding() -> None:
     assert "Known-item lookup" in guide[0].text
     assert "search_snippets" in guide[0].text
     assert "paper.canonicalId" in guide[0].text
+    assert "affiliation, coauthor, venue, or" in guide[0].text
+    assert "outside the indexed paper surface" in guide[0].text
     assert "pagination.nextCursor" in plan.messages[0].content.text
     assert "known-item lookup" in plan.messages[0].content.text
     assert "get_paper_citations for cited-by expansion" in plan.messages[0].content.text
     assert "provider-specific brokered id" in plan.messages[0].content.text
     assert "search_snippets only as a special-purpose recovery tool" in (
+        plan.messages[0].content.text
+    )
+    assert "empty degraded response rather than a raw 4xx/5xx" in (
         plan.messages[0].content.text
     )
 
@@ -208,15 +213,20 @@ def test_tool_descriptions_include_workflow_guidance() -> None:
         TOOL_DESCRIPTIONS["search_papers_bulk"].lower()
     )
     assert "Known-item lookup" in TOOL_DESCRIPTIONS["search_papers_match"]
+    assert "fuzzy Semantic Scholar title search" in TOOL_DESCRIPTIONS[
+        "search_papers_match"
+    ]
     assert "Known-item lookup" in TOOL_DESCRIPTIONS["get_paper_details"]
     assert "cite this paper (cited by)" in TOOL_DESCRIPTIONS["get_paper_citations"]
     assert "references this paper cites" in TOOL_DESCRIPTIONS["get_paper_references"]
     assert "author-centric workflow" in TOOL_DESCRIPTIONS["get_author_papers"].lower()
     assert "paper.canonicalId" in TOOL_DESCRIPTIONS["get_paper_authors"]
     assert "Semantic Scholar authorId" in TOOL_DESCRIPTIONS["get_author_info"]
+    assert "affiliation, coauthor, venue, or" in TOOL_DESCRIPTIONS["search_authors"]
     assert "special-purpose recovery tool" in TOOL_DESCRIPTIONS[
         "search_snippets"
     ].lower()
+    assert "empty result with retry guidance" in TOOL_DESCRIPTIONS["search_snippets"]
     assert "Supported inputs are query, limit, and year" in TOOL_DESCRIPTIONS[
         "search_papers_core"
     ]
@@ -253,6 +263,8 @@ def test_server_instructions_surface_continuation_and_schema_cues() -> None:
     assert "Semantic Scholar pivot rather than another page" in instructions
     assert "prefer search_papers or search_papers_semantic_scholar" in instructions
     assert "paper.canonicalId, DOI, or a" in instructions
+    assert "outside the indexed paper surface" in instructions
+    assert "affiliation, coauthor, venue, or topic clues" in instructions
 
 
 @pytest.mark.asyncio
@@ -268,6 +280,8 @@ async def test_agent_workflow_resource_mentions_pivots_and_provider_contracts() 
     assert "Semantic Scholar pivot, not another page" in guide_text
     assert "For small targeted pages" in guide_text
     assert "paper.canonicalId" in guide_text
+    assert "Common-name author disambiguation" in guide_text
+    assert "Outside-paper outputs" in guide_text
 
 
 @pytest.mark.asyncio
@@ -290,3 +304,5 @@ async def test_plan_prompt_mentions_continuation_vs_pivot_and_schema_limits() ->
     )
     assert "only support query, limit, and year" in prompt_text
     assert "prefer search_papers or search_papers_semantic_scholar" in prompt_text
+    assert "outside the indexed paper surface" in prompt_text
+    assert "affiliation, coauthor, venue, or topic clues" in prompt_text

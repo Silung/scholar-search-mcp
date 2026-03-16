@@ -24,6 +24,11 @@ This document is the current working handoff for the fork. It is intended to giv
 - Author lookup and author-pivot guidance now call out Semantic Scholar field
   support, plain-text author search normalization, and cross-provider paper ID
   portability for downstream expansion tools.
+- Exact-title lookup now degrades more cleanly: punctuation-heavy 400/404 misses
+  on `search_papers_match` fall back to fuzzy title search and then to a
+  structured no-match payload.
+- `search_snippets` now degrades provider 4xx/5xx failures to an empty payload
+  with retry guidance instead of surfacing the raw provider error.
 - `.github/workflows/test-scholar-search.md` now defines a GitHub Agentic
   Workflow smoke test for the MCP server, with the compiled workflow checked in
   as `.github/workflows/test-scholar-search.lock.yml`.
@@ -120,6 +125,10 @@ gh aw compile test-scholar-search --dir .github/workflows
   fail locally with a clearer validation error, exact-name punctuation is
   normalized before `/author/search`, and paper-to-author expansion errors now
   explain when a brokered provider ID is not portable to Semantic Scholar.
+- The current pass also improves messy-title and quote-recovery reliability:
+  `search_papers_match` uses a fuzzy Semantic Scholar fallback before returning
+  a structured no-match payload, and `search_snippets` now returns empty
+  degraded results on provider 400/404/5xx responses.
 - A live broker smoke test was completed against the configured providers in
   this workspace. It confirmed the new hint wording live and exposed a
   transient CORE 500, which is now mitigated by short retries in the client.
@@ -173,11 +182,20 @@ gh aw compile test-scholar-search --dir .github/workflows
    `search_papers` or `search_papers_semantic_scholar`.
 
 7. Author lookup/pivot errors now surface actionable Semantic Scholar guidance.
-   `search_authors` normalizes exact-name punctuation, author-field inputs are
-   validated against the supported author schema before the upstream call, and
-   `get_paper_authors`/author-profile failures now explain when to retry with
-   `paper.canonicalId`, DOI, or a Semantic Scholar-native identifier instead of
-   a provider-specific brokered ID.
+    `search_authors` normalizes exact-name punctuation, author-field inputs are
+    validated against the supported author schema before the upstream call, and
+    `get_paper_authors`/author-profile failures now explain when to retry with
+    `paper.canonicalId`, DOI, or a Semantic Scholar-native identifier instead of
+    a provider-specific brokered ID.
+
+8. Known-item and snippet recovery now degrade gracefully.
+   `search_papers_match` no longer leaks upstream 404s for no-match title
+   lookups; it retries through fuzzy Semantic Scholar search and returns a
+   structured no-match payload when the item still cannot be recovered. Common
+   reasons include punctuation drift and outputs outside the indexed paper
+   surface such as dissertations or software releases. `search_snippets`
+   similarly returns empty degraded results with retry guidance on provider
+   4xx/5xx failures.
 
 ## Known Hotspots
 

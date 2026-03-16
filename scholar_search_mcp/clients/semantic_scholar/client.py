@@ -3,6 +3,7 @@
 import logging
 import re
 import time
+from difflib import SequenceMatcher
 from typing import Any, Optional
 
 from ...constants import (
@@ -34,6 +35,15 @@ _AUTHOR_QUERY_QUOTES_PATTERN = re.compile(r'["“”‘’`]+')
 _AUTHOR_QUERY_PUNCTUATION_PATTERN = re.compile(r"[,;()]+")
 _AUTHOR_QUERY_INITIAL_PERIOD_PATTERN = re.compile(r"(?<=\w)\.(?=\s|$)")
 _AUTHOR_QUERY_WHITESPACE_PATTERN = re.compile(r"\s+")
+_TITLE_LOOKUP_QUOTES_PATTERN = re.compile(r'["“”‘’`]+')
+_TITLE_LOOKUP_PUNCTUATION_PATTERN = re.compile(r"[-–—:;,/?!()]+")
+_TITLE_LOOKUP_KEY_PATTERN = re.compile(r"[^0-9a-z]+")
+# Keep fuzzy-title recovery conservative: exact normalized matches win, and
+# otherwise require very high similarity to avoid promoting unrelated papers.
+_TITLE_MATCH_SIMILARITY_THRESHOLD = 0.92
+# Fallback only needs a small relevance-ranked window because we re-score titles
+# locally and want to keep degraded exact-match recovery cheap.
+_TITLE_MATCH_FALLBACK_LIMIT = 10
 
 
 class SemanticScholarClient:
@@ -185,6 +195,105 @@ class SemanticScholarClient:
             "or sourceId."
         )
 
+    @staticmethod
+    def _normalize_title_lookup_query(query: str) -> str:
+        normalized = _TITLE_LOOKUP_QUOTES_PATTERN.sub(" ", query.strip())
+        normalized = _TITLE_LOOKUP_PUNCTUATION_PATTERN.sub(" ", normalized)
+        normalized = _AUTHOR_QUERY_WHITESPACE_PATTERN.sub(" ", normalized).strip()
+        return normalized or query.strip()
+
+    @classmethod
+    def _title_lookup_queries(cls, query: str) -> list[str]:
+        queries: list[str] = []
+        for candidate in (query.strip(), cls._normalize_title_lookup_query(query)):
+            if candidate and candidate not in queries:
+                queries.append(candidate)
+        return queries
+
+    @staticmethod
+    def _normalize_title_match_key(value: str) -> str:
+        normalized = _TITLE_LOOKUP_KEY_PATTERN.sub(" ", value.lower())
+        normalized = _AUTHOR_QUERY_WHITESPACE_PATTERN.sub(" ", normalized).strip()
+        return normalized
+
+    @classmethod
+    def _pick_title_match_candidate(
+        cls,
+        query: str,
+        candidates: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        target_key = cls._normalize_title_match_key(query)
+        if not target_key:
+            return None
+
+        best_candidate: dict[str, Any] | None = None
+        best_score: tuple[int, float] = (-1, -1.0)
+        for candidate in candidates:
+            title = candidate.get("title")
+            if not isinstance(title, str) or not title.strip():
+                continue
+            candidate_key = cls._normalize_title_match_key(title)
+            if not candidate_key:
+                continue
+            exact = candidate_key == target_key
+            containment = target_key in candidate_key or candidate_key in target_key
+            ratio = SequenceMatcher(None, target_key, candidate_key).ratio()
+            score = (2 if exact else 1 if containment else 0, ratio)
+            if score > best_score:
+                best_score = score
+                best_candidate = candidate
+
+        if best_candidate is None:
+            return None
+
+        exactish, ratio = best_score
+        if exactish > 0 or ratio >= _TITLE_MATCH_SIMILARITY_THRESHOLD:
+            return best_candidate
+        return None
+
+    async def _search_papers_match_fallback(
+        self,
+        query: str,
+        fields: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        candidate_queries = self._title_lookup_queries(query)
+        for candidate_query in candidate_queries:
+            try:
+                fallback_response = await self.search_papers(
+                    candidate_query,
+                    limit=_TITLE_MATCH_FALLBACK_LIMIT,
+                    fields=fields,
+                )
+            except httpx.HTTPStatusError:
+                continue
+            matched = self._pick_title_match_candidate(
+                query,
+                fallback_response.get("data", []),
+            )
+            if matched is None:
+                continue
+            payload = dump_jsonable(Paper.model_validate(matched))
+            payload["matchFound"] = True
+            payload["matchStrategy"] = "fuzzy_search"
+            if candidate_query != query.strip():
+                payload["normalizedQuery"] = candidate_query
+            return payload
+
+        return {
+            "paperId": None,
+            "title": None,
+            "query": query,
+            "matchFound": False,
+            "matchStrategy": "none",
+            "normalizedQueriesTried": candidate_queries,
+            "message": (
+                "No Semantic Scholar title match was found. This query may refer to "
+                "a dissertation, software release, report, or other output outside "
+                "the indexed paper surface. Try search_papers, search_authors, or "
+                "external verification."
+            ),
+        }
+
     async def search_papers(
         self,
         query: str,
@@ -288,7 +397,13 @@ class SemanticScholarClient:
             "query": query,
             "fields": ",".join(fields or DEFAULT_PAPER_FIELDS),
         }
-        response = await self._request("GET", "paper/search/match", params=params)
+        try:
+            response = await self._request("GET", "paper/search/match", params=params)
+        except httpx.HTTPStatusError as exc:
+            status_code = self._status_code_from_error(exc)
+            if status_code in {400, 404}:
+                return await self._search_papers_match_fallback(query, fields=fields)
+            raise
         return dump_jsonable(self._normalize_match_response(response))
 
     async def paper_autocomplete(self, query: str) -> dict[str, Any]:
@@ -494,7 +609,9 @@ class SemanticScholarClient:
                     "search_authors only supports plain-text name queries. "
                     f"The MCP server normalized the query to {normalized_query!r}; "
                     "if the request still fails, retry without quotes, boolean "
-                    "operators, or other special syntax."
+                    "operators, or other special syntax. For common names, add "
+                    "affiliation, coauthor, venue, or topic clues and then confirm "
+                    "the best candidate with get_author_info/get_author_papers."
                 ) from exc
             raise
         return dump_jsonable(AuthorListResponse.model_validate(response))
@@ -547,7 +664,23 @@ class SemanticScholarClient:
             params["minCitationCount"] = min_citation_count
         if venue:
             params["venue"] = venue
-        response = await self._request("GET", "snippet/search", params=params)
+        try:
+            response = await self._request("GET", "snippet/search", params=params)
+        except httpx.HTTPStatusError as exc:
+            status_code = self._status_code_from_error(exc)
+            if status_code in {400, 404, 500, 502, 503, 504}:
+                payload = dump_jsonable(SnippetSearchResponse(data=[]))
+                payload["query"] = query
+                payload["degraded"] = True
+                payload["message"] = (
+                    "Semantic Scholar snippet search could not serve this query, so "
+                    "the server returned an empty result instead of surfacing the raw "
+                    "provider error. Retry with a shorter plain-text phrase or fall "
+                    "back to search_papers_match/search_papers."
+                )
+                payload["providerStatusCode"] = status_code
+                return payload
+            raise
         return dump_jsonable(SnippetSearchResponse.model_validate(response))
 
     # ------------------------------------------------------------------
