@@ -142,6 +142,23 @@ class SemanticScholarClient:
                         return Paper.model_validate(candidate)
         return Paper.model_validate(response)
 
+    @staticmethod
+    def _normalize_nested_paper_list_response(
+        response: Any,
+        nested_key: str,
+    ) -> PaperListResponse:
+        """Normalize list endpoints that wrap each paper under a nested key."""
+        if isinstance(response, dict):
+            normalized = dict(response)
+            raw_items = normalized.get("data")
+            if isinstance(raw_items, list):
+                normalized["data"] = [
+                    item.get(nested_key, item) if isinstance(item, dict) else item
+                    for item in raw_items
+                ]
+            response = normalized
+        return PaperListResponse.model_validate(response)
+
     async def search_papers(
         self,
         query: str,
@@ -283,7 +300,9 @@ class SemanticScholarClient:
             f"paper/{paper_id}/citations",
             params=params,
         )
-        return dump_jsonable(PaperListResponse.model_validate(response))
+        return dump_jsonable(
+            self._normalize_nested_paper_list_response(response, "citingPaper")
+        )
 
     async def get_paper_references(
         self,
@@ -304,7 +323,9 @@ class SemanticScholarClient:
             f"paper/{paper_id}/references",
             params=params,
         )
-        return dump_jsonable(PaperListResponse.model_validate(response))
+        return dump_jsonable(
+            self._normalize_nested_paper_list_response(response, "citedPaper")
+        )
 
     async def get_paper_authors(
         self,

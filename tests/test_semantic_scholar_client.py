@@ -202,6 +202,96 @@ async def test_get_paper_citations_response_includes_pagination(
 
 
 @pytest.mark.asyncio
+async def test_get_paper_citations_unwraps_nested_citing_paper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    class NestedCitationsAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return DummyResponse(
+                status_code=200,
+                payload={
+                    "offset": 0,
+                    "data": [
+                        {
+                            "paperId": None,
+                            "title": None,
+                            "citingPaper": {
+                                "paperId": "citing-paper-1",
+                                "title": "Wrapped citing paper",
+                            },
+                        }
+                    ],
+                },
+            )
+
+    monkeypatch.setattr(
+        server.httpx, "AsyncClient", lambda timeout: NestedCitationsAsyncClient()
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.get_paper_citations("paper-xyz", limit=1)
+
+    assert result["data"][0]["paperId"] == "citing-paper-1"
+    assert result["data"][0]["title"] == "Wrapped citing paper"
+    assert "citingPaper" not in result["data"][0]
+
+
+@pytest.mark.asyncio
+async def test_get_paper_references_unwraps_nested_cited_paper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    class NestedReferencesAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return DummyResponse(
+                status_code=200,
+                payload={
+                    "offset": 0,
+                    "data": [
+                        {
+                            "paperId": None,
+                            "title": None,
+                            "citedPaper": {
+                                "paperId": "referenced-paper-1",
+                                "title": "Wrapped reference",
+                            },
+                        }
+                    ],
+                },
+            )
+
+    monkeypatch.setattr(
+        server.httpx, "AsyncClient", lambda timeout: NestedReferencesAsyncClient()
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.get_paper_references("paper-xyz", limit=1)
+
+    assert result["data"][0]["paperId"] == "referenced-paper-1"
+    assert result["data"][0]["title"] == "Wrapped reference"
+    assert "citedPaper" not in result["data"][0]
+
+
+@pytest.mark.asyncio
 async def test_get_author_papers_response_includes_pagination(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
