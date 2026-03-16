@@ -21,6 +21,9 @@ This document is the current working handoff for the fork. It is intended to giv
   outside the runtime MCP surface.
 - The highest-priority workflow-level rough edges from the last agent UX review
   have now been fixed in code, tests, and durable docs.
+- Author lookup and author-pivot guidance now call out Semantic Scholar field
+  support, plain-text author search normalization, and cross-provider paper ID
+  portability for downstream expansion tools.
 - `.github/workflows/test-scholar-search.md` now defines a GitHub Agentic
   Workflow smoke test for the MCP server, with the compiled workflow checked in
   as `.github/workflows/test-scholar-search.lock.yml`.
@@ -113,6 +116,10 @@ gh aw compile test-scholar-search --dir .github/workflows
 - Current follow-up work is now mostly product-shaping work around provider
   preferences and whether retry-recovered provider behavior should be surfaced
   to agents.
+- The latest pass also hardens author lookup UX: unsupported author fields now
+  fail locally with a clearer validation error, exact-name punctuation is
+  normalized before `/author/search`, and paper-to-author expansion errors now
+  explain when a brokered provider ID is not portable to Semantic Scholar.
 - A live broker smoke test was completed against the configured providers in
   this workspace. It confirmed the new hint wording live and exposed a
   transient CORE 500, which is now mitigated by short retries in the client.
@@ -160,10 +167,17 @@ gh aw compile test-scholar-search --dir .github/workflows
   transient backend 500s by retrying before falling through.
 
 6. `search_papers_bulk` now enforces small requested limits client-side.
-  The Semantic Scholar bulk API may still return its large provider batch even
-  when asked for fewer records, so the client truncates `data` after
-  normalization and the durable docs now steer small targeted queries toward
-  `search_papers` or `search_papers_semantic_scholar`.
+   The Semantic Scholar bulk API may still return its large provider batch even
+   when asked for fewer records, so the client truncates `data` after
+   normalization and the durable docs now steer small targeted queries toward
+   `search_papers` or `search_papers_semantic_scholar`.
+
+7. Author lookup/pivot errors now surface actionable Semantic Scholar guidance.
+   `search_authors` normalizes exact-name punctuation, author-field inputs are
+   validated against the supported author schema before the upstream call, and
+   `get_paper_authors`/author-profile failures now explain when to retry with
+   `paper.canonicalId`, DOI, or a Semantic Scholar-native identifier instead of
+   a provider-specific brokered ID.
 
 ## Known Hotspots
 

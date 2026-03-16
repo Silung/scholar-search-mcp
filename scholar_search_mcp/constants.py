@@ -40,3 +40,5 @@ DEFAULT_AUTHOR_FIELDS = [
     "citationCount",
     "hIndex",
 ]
+
+SUPPORTED_AUTHOR_FIELDS = tuple(DEFAULT_AUTHOR_FIELDS)

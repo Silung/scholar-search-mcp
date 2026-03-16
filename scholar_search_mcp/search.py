@@ -88,6 +88,12 @@ def _metadata(
         "serpapi_google_scholar": "SerpApi Google Scholar",
         "arxiv": "arXiv",
     }
+    portability_guidance = (
+        "For Semantic Scholar expansion tools such as get_paper_citations, "
+        "get_paper_references, get_paper_authors, or author pivots, prefer a "
+        "Semantic Scholar paperId, paper.canonicalId, or DOI rather than a "
+        "provider-specific brokered id. "
+    )
 
     if provider_used == "semantic_scholar":
         if venue:
@@ -120,6 +126,7 @@ def _metadata(
             "Results are from SerpApi Google Scholar. Papers that include "
             "scholarResultId can be passed to get_paper_citation_formats for "
             "MLA, APA, BibTeX, and other export formats. "
+            + portability_guidance
             + bulk_guidance
             +
             "To expand from a paper use get_paper_citations or get_paper_references."
@@ -132,6 +139,11 @@ def _metadata(
     else:
         next_step_hint = (
             "Inspect the results. "
+            + (
+                portability_guidance
+                if provider_used in {"core", "arxiv"}
+                else ""
+            )
             + bulk_guidance
             +
             "To expand from a paper use get_paper_citations or get_paper_references."

@@ -1,6 +1,7 @@
 import pytest
 
 from scholar_search_mcp import server
+from scholar_search_mcp.transport import httpx
 from tests.helpers import DummyAsyncClient, DummyResponse
 
 
@@ -445,3 +446,111 @@ def test_search_papers_match_unwraps_nested_match_payload() -> None:
     assert normalized.paper_id == "match-123"
     assert normalized.title == "Wrapped best match"
     assert "data" not in normalized.model_dump(by_alias=True, exclude_none=True)
+
+
+def test_normalize_author_search_query_falls_back_to_original_when_empty() -> None:
+    client = server.SemanticScholarClient()
+
+    normalized = client._normalize_author_search_query('  ""  ')
+
+    assert normalized == '""'
+
+
+@pytest.mark.asyncio
+async def test_search_authors_normalizes_exact_name_punctuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """search_authors should sanitize exact-name punctuation before the request."""
+    captured_queries: list[str] = []
+
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    class CapturingAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, *, params, **kwargs):
+            captured_queries.append(params["query"])
+            return DummyResponse(
+                status_code=200,
+                payload={"total": 1, "offset": 0, "data": [{"authorId": "9191855"}]},
+            )
+
+    monkeypatch.setattr(
+        server.httpx, "AsyncClient", lambda timeout: CapturingAsyncClient()
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.search_authors("Ryan L. Perroy")
+
+    assert captured_queries == ["Ryan L Perroy"]
+    assert result["data"][0]["authorId"] == "9191855"
+
+
+@pytest.mark.asyncio
+async def test_get_author_info_surfaces_actionable_404_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    request = httpx.Request(
+        "GET", "https://api.semanticscholar.org/graph/v1/author/9191855"
+    )
+    response = httpx.Response(status_code=404, request=request)
+
+    class MissingAuthorAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return response
+
+    monkeypatch.setattr(
+        server.httpx, "AsyncClient", lambda timeout: MissingAuthorAsyncClient()
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    with pytest.raises(ValueError, match="Use a Semantic Scholar authorId"):
+        await sc.get_author_info("9191855")
+
+
+@pytest.mark.asyncio
+async def test_get_paper_authors_surfaces_portability_hint_for_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    request = httpx.Request(
+        "GET", "https://api.semanticscholar.org/graph/v1/paper/170189535/authors"
+    )
+    response = httpx.Response(status_code=404, request=request)
+
+    class MissingPaperAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return response
+
+    monkeypatch.setattr(
+        server.httpx, "AsyncClient", lambda timeout: MissingPaperAsyncClient()
+    )
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    with pytest.raises(ValueError, match="paper.canonicalId or a DOI"):
+        await sc.get_paper_authors("170189535")

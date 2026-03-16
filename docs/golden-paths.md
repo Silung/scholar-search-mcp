@@ -123,6 +123,10 @@ search_papers_match(query="Attention Is All You Need")
 2. Use `get_author_info` to confirm identity and profile metadata.
 3. Use `get_author_papers` to expand into the author's work.
 4. Use `get_paper_authors` when the user starts from a paper instead of a name.
+5. When the starting paper came from brokered non-Semantic-Scholar results,
+   prefer `paper.canonicalId` or DOI for the `paper_id` you pass into Semantic
+   Scholar expansion tools; provider-specific brokered IDs such as raw CORE
+   `paperId`/`sourceId` are not portable.
 
 **Example request**: "What has Yoshua Bengio published recently?"
 
@@ -137,6 +141,8 @@ search_authors(query="Yoshua Bengio", limit=5)
 
 - Author search feels first-class instead of secondary.
 - Agents can pivot cleanly between paper and author workflows.
+- Agents use Semantic Scholar-compatible paper/author identifiers when pivoting
+  out of brokered results.
 - Recent work and collaborator exploration are easy next steps.
 
 ## Secondary Workflows
@@ -182,9 +188,18 @@ as part of the intended agent contract.
 ### 4. Provider-specific schemas now match provider capability
 
 - `search_papers_core`, `search_papers_serpapi`, and `search_papers_arxiv`
-  expose only `query`, `limit`, and `year`.
+   expose only `query`, `limit`, and `year`.
 - `search_papers_semantic_scholar` continues to expose the wider Semantic
-  Scholar-compatible filter set.
+   Scholar-compatible filter set.
+
+### 5. Author and paper pivots now call out Semantic Scholar ID boundaries
+
+- `search_authors` normalizes plain-text exact-name punctuation before calling
+  Semantic Scholar.
+- Author-profile tools now describe the supported author fields explicitly.
+- Semantic Scholar paper-expansion tools now tell agents to prefer
+  `paper.canonicalId`, DOI, or a Semantic Scholar `paperId` instead of a
+  provider-specific brokered ID.
 
 ## Future Work
 

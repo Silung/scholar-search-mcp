@@ -162,6 +162,22 @@ When SerpApi supplies the results, the response looks like:
 - `semanticScholarOnlyFilters` - which requested filters forced the broker to skip non-compatible providers
 - `recommendedPaginationTool` - currently always `search_papers_bulk` for exhaustive retrieval
 
+#### Cross-provider paper ID portability
+
+Brokered `search_papers` results normalize metadata across providers, but raw
+provider IDs are **not automatically portable** into Semantic Scholar expansion
+tools such as `get_paper_citations`, `get_paper_references`, `get_paper_authors`,
+or the author-pivot flow that follows them. When a brokered result did **not**
+come from Semantic Scholar, prefer one of these identifiers for downstream
+Semantic Scholar expansion:
+
+1. `paper.canonicalId`
+2. a DOI (for example `DOI:10.xxxx/...` when available)
+3. a Semantic Scholar `paperId`
+
+Avoid retrying those expansion tools with a provider-specific brokered ID such
+as a raw CORE `paperId` or `sourceId`.
+
 #### Provider order and filter-based skipping
 
 Provider order controls *which providers are eligible and in what order they are attempted*, but compatibility rules still apply. If you request Semantic Scholar-only filters such as `publicationDateOrYear`, `fieldsOfStudy`, `publicationTypes`, `openAccessPdf`, or `minCitationCount`, the broker will skip `core` and `serpapi(_google_scholar)` even if they appear earlier in `providerOrder`. Example: `providerOrder=["core","semantic_scholar","arxiv"]` with `publicationDateOrYear="2020:2024"` will skip CORE and continue to Semantic Scholar because CORE cannot honor that filter.
@@ -264,12 +280,12 @@ Primary defaults for agents:
 | `search_papers_match`            | Known-item lookup for messy or partial titles; finds the single paper whose title best matches the query string |
 | `paper_autocomplete`             | Return paper title completions for a partial query (typeahead)                                           |
 | `get_paper_details`              | Known-item lookup by identifier: get one paper by DOI, ArXiv ID, S2 ID, or URL                         |
-| `get_paper_citations`            | Citation chasing outward: papers that cite the given paper (`cited by`); treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
-| `get_paper_references`           | Citation chasing backward: references behind the given paper; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
-| `get_paper_authors`              | Authors of the given paper; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
-| `get_author_info`                | Author profile by ID                                                                                     |
-| `get_author_papers`              | Papers by author; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow; supports `publicationDateOrYear` |
-| `search_authors`                 | Search for authors by name; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_citations`            | Citation chasing outward: papers that cite the given paper (`cited by`); for Semantic Scholar expansion prefer a Semantic Scholar `paperId`, DOI, or `paper.canonicalId` instead of a provider-specific brokered ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_references`           | Citation chasing backward: references behind the given paper; for Semantic Scholar expansion prefer a Semantic Scholar `paperId`, DOI, or `paper.canonicalId` instead of a provider-specific brokered ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_paper_authors`              | Authors of the given paper; for this Semantic Scholar expansion path prefer a Semantic Scholar `paperId`, DOI, or `paper.canonicalId` instead of a provider-specific brokered ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
+| `get_author_info`                | Author profile by Semantic Scholar author ID (typically from `search_authors` or `get_paper_authors`)   |
+| `get_author_papers`              | Papers by author; requires a Semantic Scholar author ID; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow; supports `publicationDateOrYear` |
+| `search_authors`                 | Search for authors by name using a plain-text query; the server normalizes exact-name punctuation before calling Semantic Scholar; treat `pagination.nextCursor` as opaque, pass it back unchanged as `cursor`, and keep it scoped to the same tool/query flow |
 | `batch_get_authors`              | Details for up to 1,000 author IDs in one call                                                           |
 | `search_snippets`                | Special-purpose recovery tool for quote or phrase validation when title/keyword search is weak; returns snippet text, paper metadata, and score |
 | `get_paper_recommendations`      | Similar papers for a given paper (GET single-seed)                                                       |
