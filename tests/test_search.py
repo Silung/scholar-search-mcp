@@ -651,6 +651,7 @@ async def test_search_papers_core_result_without_doi_marks_expansion_id_not_port
 
     assert paper["canonicalId"] == "core-1"
     assert paper["expansionIdStatus"] == "not_portable"
+    assert paper.get("recommendedExpansionId") is None
     assert "recommendedExpansionId" not in paper
 
 

@@ -1,7 +1,7 @@
 """CORE API client."""
 
 import logging
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from ...constants import CORE_API_BASE
 from ...models import Author, CoreSearchResponse, Paper, dump_jsonable
@@ -203,7 +203,9 @@ class CoreApiClient:
         paper_source_id = core_id or doi or None
         paper_canonical_id = doi or core_id or None
         recommended_expansion_id = doi or None
-        expansion_id_status = "portable" if recommended_expansion_id else "not_portable"
+        expansion_id_status: Literal["portable", "not_portable"] = (
+            "portable" if recommended_expansion_id else "not_portable"
+        )
 
         return dump_jsonable(
             Paper(

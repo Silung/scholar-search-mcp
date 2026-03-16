@@ -1,7 +1,7 @@
 """Normalize SerpApi Google Scholar organic results into the shared Paper model."""
 
 import re
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from ...models import Author, Paper, dump_jsonable
 
@@ -92,7 +92,9 @@ def normalize_organic_result(result: dict[str, Any]) -> Optional[dict[str, Any]]
     # canonicalId priority: DOI > cluster_id > result_id > sourceId
     canonical_id: Optional[str] = doi or cluster_id or result_id or source_id
     recommended_expansion_id: Optional[str] = doi or None
-    expansion_id_status = "portable" if recommended_expansion_id else "not_portable"
+    expansion_id_status: Literal["portable", "not_portable"] = (
+        "portable" if recommended_expansion_id else "not_portable"
+    )
 
     # --- Authors ---
     authors: list[Author] = []
