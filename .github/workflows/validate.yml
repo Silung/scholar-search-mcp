@@ -21,10 +21,14 @@ jobs:
 
       - name: Install gh-aw
         if: matrix.python-version == '3.12'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: gh extension install github/gh-aw
 
       - name: Verify agentic workflow lockfile is up to date
         if: matrix.python-version == '3.12'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh aw compile test-scholar-search --dir .github/workflows
           git diff --exit-code -- .github/workflows/test-scholar-search.lock.yml

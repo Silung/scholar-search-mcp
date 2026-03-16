@@ -104,6 +104,7 @@ def test_agentic_workflow_documentation_stays_in_sync() -> None:
     assert ".github/workflows/test-scholar-search.md" in golden_paths
     assert compile_command in instructions
     assert "Install gh-aw" in validate_workflow
+    assert "GH_TOKEN: ${{ github.token }}" in validate_workflow
     assert compile_command in validate_workflow
     assert "git diff --exit-code -- .github/workflows/test-scholar-search.lock.yml" in (
         validate_workflow
