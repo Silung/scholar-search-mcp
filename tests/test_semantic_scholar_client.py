@@ -1,7 +1,7 @@
 import pytest
-from scholar_search_mcp.transport import httpx
 
 from scholar_search_mcp import server
+from scholar_search_mcp.transport import httpx
 from tests.helpers import DummyAsyncClient, DummyResponse
 
 

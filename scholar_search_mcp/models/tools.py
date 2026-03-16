@@ -319,7 +319,10 @@ class PaperListArgs(PaperLookupArgs):
 
 class PaperAuthorsArgs(ToolArgsModel):
     paper_id: str = Field(description=SEMANTIC_SCHOLAR_EXPANSION_PAPER_ID_DESCRIPTION)
-    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
+    fields: list[str] | None = Field(
+        default=None,
+        description=AUTHOR_FIELDS_DESCRIPTION,
+    )
     limit: int = Field(
         default=100,
         description="Max results (default 100, max 1000)",
@@ -342,7 +345,10 @@ class PaperAuthorsArgs(ToolArgsModel):
 
 class AuthorInfoArgs(ToolArgsModel):
     author_id: str = Field(description=AUTHOR_ID_DESCRIPTION)
-    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
+    fields: list[str] | None = Field(
+        default=None,
+        description=AUTHOR_FIELDS_DESCRIPTION,
+    )
 
     @field_validator("fields")
     @classmethod
@@ -373,7 +379,10 @@ class AuthorPapersArgs(AuthorInfoArgs):
 
 class AuthorSearchArgs(ToolArgsModel):
     query: str = Field(description=AUTHOR_SEARCH_QUERY_DESCRIPTION)
-    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
+    fields: list[str] | None = Field(
+        default=None,
+        description=AUTHOR_FIELDS_DESCRIPTION,
+    )
     limit: int = Field(
         default=10,
         description="Max results (default 10, max 1000)",
@@ -396,7 +405,10 @@ class AuthorSearchArgs(ToolArgsModel):
 
 class BatchGetAuthorsArgs(ToolArgsModel):
     author_ids: list[str] = Field(description="List of author IDs (up to 1000)")
-    fields: list[str] | None = Field(default=None, description=AUTHOR_FIELDS_DESCRIPTION)
+    fields: list[str] | None = Field(
+        default=None,
+        description=AUTHOR_FIELDS_DESCRIPTION,
+    )
 
     @field_validator("author_ids")
     @classmethod
