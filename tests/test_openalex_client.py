@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from scholar_search_mcp import server
@@ -45,7 +47,7 @@ def test_openalex_work_to_paper_reconstructs_abstract_and_marks_truncation() -> 
 async def test_openalex_search_uses_polite_pool_and_range_filters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: list[dict[str, object]] = []
+    captured: list[dict[str, Any]] = []
 
     class CapturingAsyncClient:
         async def __aenter__(self):
@@ -117,7 +119,7 @@ async def test_openalex_get_paper_citations_uses_cited_by_api_url(
             },
         ),
     ]
-    captured: list[dict[str, object]] = []
+    captured: list[dict[str, Any]] = []
 
     class QueueAsyncClient:
         def __init__(self, queued: list[DummyResponse]) -> None:
@@ -180,7 +182,7 @@ async def test_openalex_get_paper_references_batches_ids_in_order(
             },
         ),
     ]
-    captured: list[dict[str, object]] = []
+    captured: list[dict[str, Any]] = []
 
     class QueueAsyncClient:
         def __init__(self, queued: list[DummyResponse]) -> None:

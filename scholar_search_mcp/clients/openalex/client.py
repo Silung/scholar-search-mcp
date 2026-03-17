@@ -310,10 +310,9 @@ class OpenAlexClient:
             name = author["last_known_institution"].get("display_name")
             if isinstance(name, str) and name.strip():
                 institutions.append(name.strip())
-        summary_stats = (
-            author.get("summary_stats")
-            if isinstance(author.get("summary_stats"), dict)
-            else {}
+        raw_summary_stats = author.get("summary_stats")
+        summary_stats: dict[str, Any] = (
+            raw_summary_stats if isinstance(raw_summary_stats, dict) else {}
         )
         return AuthorProfile(
             authorId=OpenAlexClient._extract_openalex_id(author.get("id"), "A"),
@@ -511,10 +510,9 @@ class OpenAlexClient:
         offset: int = 0,
     ) -> dict[str, Any]:
         work = await self._lookup_work_raw(paper_id)
-        referenced_works = (
-            work.get("referenced_works")
-            if isinstance(work.get("referenced_works"), list)
-            else []
+        raw_referenced_works = work.get("referenced_works")
+        referenced_works: list[Any] = (
+            raw_referenced_works if isinstance(raw_referenced_works, list) else []
         )
         total = len(referenced_works)
         start = max(offset, 0)
