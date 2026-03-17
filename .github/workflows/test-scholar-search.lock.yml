@@ -30,7 +30,7 @@
 # review modes with an optional focus prompt.
 # Requires a repository or organization secret named COPILOT_GITHUB_TOKEN.
 #
-# gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"35cf3dff8af480abe145569550a8fabb7d292aad2b46936847abbc71fde8c849","compiler_version":"v0.59.0","strict":true}
+# gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"f23e09b0ee6e6f44b9b21b10c28e2c9ddd2c3befa223987825b44d7e47262111","compiler_version":"v0.59.0","strict":true}
 
 name: "Test Scholar Search MCP"
 "on":
