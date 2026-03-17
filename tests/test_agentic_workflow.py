@@ -163,10 +163,10 @@ def test_agentic_assign_workflow_catches_workflow_created_issues() -> None:
 
 
 def test_verifier_workflow_triggers_on_default_branch() -> None:
-    """Regression test: workflow push trigger must match the repo default branch (master).
+    """Regression: push trigger must match the repo default branch (master).
 
-    If the trigger branch is wrong, merging a Copilot fix PR never re-runs the
-    verifier, which breaks the agentic feedback loop.
+    If the trigger branch is wrong, merging a Copilot fix PR never re-runs
+    the verifier, which breaks the agentic feedback loop.
     """
     repo_root = Path(__file__).resolve().parent.parent
     workflow_md = (
