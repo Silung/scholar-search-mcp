@@ -23,18 +23,23 @@
 #
 # Exercise the primary Scholar Search MCP golden paths with an agent so the
 # repo gets a scheduled, high-level regression check of discovery,
-# pagination, author pivot, and optional citation-export workflows. Manual
-# runs can switch between smoke, comprehensive, and feature-probe UX review
-# modes with an optional focus prompt.
+# pagination, author pivot, and optional citation-export workflows. Evaluates
+# agent UX quality: intuitiveness, unnecessary round trips, missing features,
+# and friction points that make common workflows harder than they should be.
+# Manual runs can switch between smoke, comprehensive, and feature-probe UX
+# review modes with an optional focus prompt.
 # Requires a repository or organization secret named COPILOT_GITHUB_TOKEN.
 #
 # gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"de768fc911fc5bc444ad1199c50a5cf7356ccc0a2cac234d0da6c0eb194493b9","compiler_version":"v0.59.0","strict":true}
 
 name: "Test Scholar Search MCP"
 "on":
+  push:
+    branches:
+    - main
   schedule:
-  - cron: "29 23 * * 0"
-    # Friendly format: weekly on sunday (scattered)
+  - cron: "0 */6 * * *"
+    # Friendly format: every 6 hours (scattered)
   workflow_dispatch:
     inputs:
       focus_prompt:
@@ -53,6 +58,7 @@ name: "Test Scholar Search MCP"
 permissions: {}
 
 concurrency:
+  cancel-in-progress: true
   group: "gh-aw-${{ github.workflow }}"
 
 run-name: "Test Scholar Search MCP"
@@ -77,7 +83,7 @@ jobs:
         env:
           GH_AW_INFO_ENGINE_ID: "copilot"
           GH_AW_INFO_ENGINE_NAME: "GitHub Copilot CLI"
-          GH_AW_INFO_MODEL: ${{ vars.GH_AW_MODEL_AGENT_COPILOT || '' }}
+          GH_AW_INFO_MODEL: "gpt-5.4"
           GH_AW_INFO_VERSION: ""
           GH_AW_INFO_AGENT_VERSION: "latest"
           GH_AW_INFO_CLI_VERSION: "v0.59.0"
@@ -344,7 +350,7 @@ jobs:
           cat > /opt/gh-aw/safeoutputs/tools.json << 'GH_AW_SAFE_OUTPUTS_TOOLS_EOF'
           [
             {
-              "description": "Create a new GitHub issue for tracking bugs, feature requests, or tasks. Use this for actionable work items that need assignment, labeling, and status tracking. For reports, announcements, or status updates that don't require task tracking, use create_discussion instead. CONSTRAINTS: Maximum 1 issue(s) can be created. Title will be prefixed with \"[agentic-test] \". Labels [\"automation\" \"testing\"] will be automatically added.",
+              "description": "Create a new GitHub issue for tracking bugs, feature requests, or tasks. Use this for actionable work items that need assignment, labeling, and status tracking. For reports, announcements, or status updates that don't require task tracking, use create_discussion instead. CONSTRAINTS: Maximum 1 issue(s) can be created. Title will be prefixed with \"[agentic-test] \". Labels [\"automation\" \"testing\" \"agentic\" \"needs-copilot\"] will be automatically added.",
               "inputSchema": {
                 "additionalProperties": false,
                 "properties": {
@@ -742,7 +748,7 @@ jobs:
         env:
           COPILOT_AGENT_RUNNER_TYPE: STANDALONE
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_MODEL: ${{ vars.GH_AW_MODEL_AGENT_COPILOT || '' }}
+          COPILOT_MODEL: "gpt-5.4"
           GH_AW_MCP_CONFIG: /home/runner/.copilot/mcp-config.json
           GH_AW_PHASE: agent
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
@@ -933,7 +939,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           WORKFLOW_NAME: "Test Scholar Search MCP"
-          WORKFLOW_DESCRIPTION: "Exercise the primary Scholar Search MCP golden paths with an agent so the\nrepo gets a scheduled, high-level regression check of discovery,\npagination, author pivot, and optional citation-export workflows. Manual\nruns can switch between smoke, comprehensive, and feature-probe UX review\nmodes with an optional focus prompt.\nRequires a repository or organization secret named COPILOT_GITHUB_TOKEN."
+          WORKFLOW_DESCRIPTION: "Exercise the primary Scholar Search MCP golden paths with an agent so the\nrepo gets a scheduled, high-level regression check of discovery,\npagination, author pivot, and optional citation-export workflows. Evaluates\nagent UX quality: intuitiveness, unnecessary round trips, missing features,\nand friction points that make common workflows harder than they should be.\nManual runs can switch between smoke, comprehensive, and feature-probe UX\nreview modes with an optional focus prompt.\nRequires a repository or organization secret named COPILOT_GITHUB_TOKEN."
           HAS_PATCH: ${{ steps.collect_output.outputs.has_patch }}
         with:
           script: |
@@ -1171,7 +1177,7 @@ jobs:
           GH_AW_ALLOWED_DOMAINS: "api.business.githubcopilot.com,api.enterprise.githubcopilot.com,api.github.com,api.githubcopilot.com,api.individual.githubcopilot.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,github.com,host.docker.internal,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,raw.githubusercontent.com,registry.npmjs.org,s.symcb.com,s.symcd.com,security.ubuntu.com,telemetry.enterprise.githubcopilot.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
-          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_issue\":{\"labels\":[\"automation\",\"testing\"],\"max\":1,\"title_prefix\":\"[agentic-test] \"},\"missing_data\":{},\"missing_tool\":{}}"
+          GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG: "{\"create_issue\":{\"labels\":[\"automation\",\"testing\",\"agentic\",\"needs-copilot\"],\"max\":1,\"title_prefix\":\"[agentic-test] \"},\"missing_data\":{},\"missing_tool\":{}}"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |

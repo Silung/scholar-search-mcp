@@ -2,9 +2,11 @@
 description: |
   Exercise the primary Scholar Search MCP golden paths with an agent so the
   repo gets a scheduled, high-level regression check of discovery,
-  pagination, author pivot, and optional citation-export workflows. Manual
-  runs can switch between smoke, comprehensive, and feature-probe UX review
-  modes with an optional focus prompt.
+  pagination, author pivot, and optional citation-export workflows. Evaluates
+  agent UX quality: intuitiveness, unnecessary round trips, missing features,
+  and friction points that make common workflows harder than they should be.
+  Manual runs can switch between smoke, comprehensive, and feature-probe UX
+  review modes with an optional focus prompt.
   Requires a repository or organization secret named COPILOT_GITHUB_TOKEN.
 
 on:
@@ -19,7 +21,9 @@ on:
         description: Optional feature, workflow, or UX hypothesis to probe.
         type: string
         required: false
-  schedule: weekly on sunday
+  schedule: every 6 hours
+  push:
+    branches: [main]
 
 permissions: read-all
 
@@ -27,12 +31,14 @@ network: defaults
 
 engine: copilot
 
+model: gpt-5.4
+
 timeout-minutes: 20
 
 safe-outputs:
   create-issue:
     title-prefix: "[agentic-test] "
-    labels: [automation, testing]
+    labels: [automation, testing, agentic, needs-copilot]
     max: 1
 
 tools:
@@ -84,15 +90,31 @@ mcp-servers:
 
 # Test Scholar Search MCP
 
-You are validating the `scholar-search-mcp` server as an end-to-end user would.
+You are validating the `scholar-search-mcp` server as a critical end-to-end reviewer,
+not just a functional tester. Your primary job is to evaluate **agent UX quality**:
+how intuitive the tools feel, how many round trips tasks require, what features are
+missing, and where the experience creates unnecessary friction.
+
 Use the MCP tools first; use bash only when you need short local validation or to
 inspect structured output more carefully.
 
-This workflow is a smoke test for the primary user journeys, but manual runs can
-expand into a broader UX review loop instead of staying fixed on one script.
-Focus on the core paths that should stay reliable for agents: quick discovery,
-known-item lookup, pagination, citation chasing, author pivot, and optional
-citation export when SerpApi is available.
+## Agent UX evaluation mandate
+
+For every tool interaction, actively note:
+
+- **Intuitiveness**: Did the tool do what you expected from its name and description
+  alone? Would a new agent use it correctly on the first try?
+- **Round trips**: How many tool calls did this task require? Could it be done in
+  fewer? Flag any workflow that needs 3+ calls where 1-2 should suffice.
+- **Missing features**: What did you wish you could do but couldn't? What fields or
+  capabilities would make a task obviously easier?
+- **Confusing contracts**: Anything where the response shape, field names, or error
+  messages were ambiguous, surprising, or inconsistent with what the description promised.
+- **Dead ends**: Any path that left you without a clear next step or that returned
+  data you couldn't act on without undocumented knowledge.
+
+Keep a running tally of friction points throughout the run. These are as important
+as functional pass/fail results.
 
 ## Run context
 
@@ -120,9 +142,9 @@ citation export when SerpApi is available.
 4. Confirm the author-pivot path works from the same MCP surface agents use in
    production.
 5. Confirm optional citation export still works when SerpApi is available.
-6. Capture UX feedback about missing fields, confusing metadata, no-result
-   behavior, and whether the findings suggest code changes, documentation
-   updates, or a GitHub issue ready for a Copilot coding agent.
+6. **Critically evaluate agent UX**: identify every friction point, unnecessary
+   round trip, missing feature, confusing field name, or dead-end response that
+   degrades the experience. This goal is weighted equally with the functional checks.
 
 ## Mode guide
 
@@ -144,18 +166,26 @@ citation export when SerpApi is available.
      exercises before you start the deeper probes.
    - Always run at least a lightweight baseline so regressions in the core
      workflow are still visible.
+   - **Before you begin**: open a running notes section called "UX friction log"
+     where you will record every moment the experience felt awkward, slow, or
+     required undocumented knowledge.
 
 2. **Quick discovery** (all modes)
    - Call `search_papers(query="graph neural networks", limit=5)`.
    - Record `brokerMetadata.providerUsed`, `brokerMetadata.nextStepHint`, and the
      titles/providers of the first few results.
    - Verify every returned paper has a `title` and at least one author entry.
+   - **UX check**: Was `nextStepHint` actionable on first read, or did it require
+     interpretation? Did the response tell you clearly what to do next without
+     reading the docs?
 
 3. **Known-item lookup** (all modes)
    - Call `search_papers_match(query="Attention Is All You Need")`.
    - Use the returned identifier with `get_paper_details`.
    - Confirm the detailed record includes a stable identifier, title, and author
      metadata.
+   - **UX check**: How many round trips did this require? Could the match result
+     itself carry enough detail to skip `get_paper_details` for most tasks?
 
 4. **Exhaustive retrieval / pagination** (all modes)
    - Call `search_papers_bulk(query="graph neural networks", limit=5)`.
@@ -164,6 +194,9 @@ citation export when SerpApi is available.
    - Confirm there are no duplicate `paperId` values across the first two pages.
    - If no second page is available, note that result instead of forcing a
      failure.
+   - **UX check**: Is the pagination contract obvious from the response alone,
+     or does it require reading docs to know that `cursor` must be passed back
+     unchanged?
 
 5. **Provider-specific spot checks** (smoke + comprehensive)
    - Run `search_papers_core(query="transformer architecture", limit=3)`.
@@ -172,6 +205,8 @@ citation export when SerpApi is available.
    - Verify each provider returns the normalized response shape the MCP server
      promises. For arXiv, look for arXiv-native identifiers/URLs when present;
      for CORE and Semantic Scholar, note whether DOI metadata is populated.
+   - **UX check**: Are the per-provider tools obviously named and scoped? Does
+     an agent know when to use a provider-specific tool versus `search_papers`?
 
 6. **Author pivot** (all modes)
    - Run `search_authors(query="Yoshua Bengio", limit=3)`.
@@ -179,6 +214,9 @@ citation export when SerpApi is available.
    - Call `get_author_papers(author_id=..., publicationDateOrYear="2022-", limit=5)`.
    - Confirm the author profile is stable enough to continue from and that the
      paper list response is structured cleanly even if recent results are sparse.
+   - **UX check**: How many round trips does a "who is this author and what have
+     they published recently?" task require? What fields are missing that would
+     make author-to-paper pivots easier?
 
 7. **Optional SerpApi citation export** (smoke + comprehensive)
    - If the SerpApi tools are configured, run
@@ -188,11 +226,16 @@ citation export when SerpApi is available.
    - Confirm the citation-export response returns at least one named format.
    - If SerpApi is unavailable, disabled, or returns no usable `scholarResultId`,
      record a clean skip instead of failing the workflow.
+   - **UX check**: Is it obvious from the search result that `scholarResultId`
+     is the right identifier to pass to `get_paper_citation_formats`? Or does
+     it require reading docs?
 
 8. **No-results behavior** (all modes)
    - Call `search_papers(query="asdkfjhasdkjfh research paper nonsense", limit=3)`.
    - Verify the server responds cleanly with an empty/low-result payload rather
      than malformed metadata or an unhelpful failure.
+   - **UX check**: Does the empty-result payload suggest a clear recovery path
+     (e.g., broaden query, try different provider), or does it just say "no results"?
 
 9. **Comprehensive-only follow-up probes**
    - If the effective mode is `comprehensive`, also:
@@ -219,12 +262,47 @@ citation export when SerpApi is available.
     - Keep the baseline notes, but spend most of the detailed analysis on the
       requested feature or UX hypothesis.
 
-11. **Assessment and issue creation**
+11. **UX friction summary** (all modes)
+    - Review your UX friction log and produce a structured summary:
+      - **Unnecessary round trips**: list each multi-step workflow that required
+        more tool calls than expected. State the minimum you'd expect and the
+        actual count.
+      - **Missing features**: list capabilities you wished existed. Be specific:
+        e.g., "bulk author lookup", "cross-provider deduplication", "search with
+        date range in brokered path".
+      - **Confusing contracts**: list fields, tool names, or response shapes that
+        were ambiguous or inconsistent. Explain what you expected versus what
+        you got.
+      - **Dead ends**: list any point where the response left no clear next step.
+      - **Positive signals**: briefly note what felt especially smooth or
+        well-designed so it is not accidentally degraded in future changes.
+
+12. **Assessment and issue creation**
     - Summarize the effective mode, any supplied focus prompt, the exact tool
       calls you used, whether cursor handling felt safe and clear, whether author
       workflows felt first-class, and whether any provider-specific gaps stood
       out.
+    - Prioritize the highest-impact item from your UX friction summary for the
+      issue. Prefer issues that reduce round trips or add a clearly missing
+      feature over issues that are purely cosmetic.
     - If you find a concrete defect or UX regression, create at most one GitHub
       issue with reproduction steps, expected vs actual behavior, and clear
       remediation guidance that points to likely code and/or documentation
       follow-up for a GitHub Copilot coding agent.
+    - Before creating a new issue, search existing open issues for one whose
+      body contains a matching `agent-loop-key` comment for this failure. If a
+      matching issue exists, add a comment with the latest repro details and
+      increment the attempt counter instead of opening a duplicate.
+    - When creating a new issue, include the following markers at the top of the
+      body so the agentic loop can track convergence (no code block — paste
+      these HTML comments directly into the issue body):
+
+      <!-- agent-loop-key: <short-slug-for-the-failure> -->
+      <!-- agent-loop-origin: golden-path-smoke -->
+      <!-- agent-loop-attempts: 1 -->
+      <!-- agent-loop-last-run: <ISO 8601 timestamp of this run> -->
+
+    - When updating an existing issue, increment `agent-loop-attempts` and
+      update `agent-loop-last-run`. If `agent-loop-attempts` reaches 3 or more,
+      add the label `needs-human` and remove `needs-copilot` in your comment so
+      the assigner stops retrying automatically.

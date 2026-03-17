@@ -17,6 +17,17 @@ Before changing code, read these files in order:
 ## Development Priorities
 
 - Keep the **default tool surface small and obvious** for low-context agents.
+- **Minimize agent round trips**: every tool should give agents enough context
+  in a single response to take the obvious next step. When a task requires 3+
+  tool calls where 1-2 should suffice, that is a UX bug worth filing an issue
+  for.
+- **Prioritize intuitiveness**: tool names, parameter names, and response
+  fields should be self-explanatory. Agents should not need to read the full
+  docs to use a tool correctly on the first try.
+- **Eliminate dead ends**: every response should include clear next-step
+  guidance (e.g., `brokerMetadata.nextStepHint`, expansion IDs, pagination
+  cursors). An agent that receives a response with no obvious follow-up action
+  has hit a UX defect.
 - Preserve the workflow hierarchy:
   - `search_papers` for quick literature discovery
   - `search_papers_bulk` for exhaustive or paginated retrieval

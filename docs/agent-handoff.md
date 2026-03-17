@@ -48,6 +48,25 @@ This document is the current working handoff for the fork. It is intended to giv
 - The GitHub Agentic Workflow MCP config for `scholar-search` must stay
   containerized. Current `gh-aw` MCP Gateway releases reject legacy stdio
   `command`/`args` server definitions and require `container`-based config.
+- The verifier workflow now runs on `push` to `main` and every 6 hours
+  (`schedule: every 6 hours`), plus `workflow_dispatch`. Concurrency is set
+  to cancel in-progress runs so rapid merges do not queue up redundant
+  verifications. The old `pull_request.closed` trigger is not used.
+- The verifier creates issues with `agentic` and `needs-copilot` labels in
+  addition to `automation` and `testing`, so the auto-assignment workflow can
+  pick them up. Issues include a stable `<!-- agent-loop-key: ... -->` body
+  marker plus attempt metadata to prevent infinite retry loops. After 3
+  failed attempts, `needs-human` replaces `needs-copilot`.
+- A new `agentic-assign.yml` workflow triggers on `issues: types: [opened,
+  reopened, labeled]` and assigns GitHub Copilot only when an issue carries
+  both `agentic` and `needs-copilot` labels but not `needs-human`, `blocked`,
+  or `no-agent`. This separates assignment from verification to avoid event
+  storms.
+- The workflow now runs the GPT-5.4 model (configured via `model: gpt-5.4` in
+  the frontmatter) and emphasizes agent UX evaluation: each test step includes
+  an explicit UX check for intuitiveness, unnecessary round trips, missing
+  features, confusing contracts, and dead-end responses. A new step 11 produces
+  a structured "UX friction summary" before issue creation.
 
 ## Module Map
 
@@ -247,11 +266,15 @@ gh aw compile test-scholar-search --dir .github/workflows
 7. Consider whether OpenAlex institution/source pivots should become first-class
    tools now that the base OpenAlex author/citation surface exists.
 8. Expand the agentic workflow once stable secrets are available for deeper provider-specific assertions, for example optional SerpApi or OpenAlex coverage.
-9. Revisit whether the new manual mode/focus inputs are enough, or whether the
-   repo should eventually split the agentic workflow into multiple checked-in
-   workflows once specialized UX probes become frequent.
-10. Add live or recorded UX probes for brokered SerpApi identifier portability if
-    that path becomes a frequent source of citation-expansion missteps.
+9. Act on the first UX friction report produced by the GPT-5.4 verifier. Focus
+   on the highest-impact item from the structured "UX friction summary": likely
+   a round-trip reduction or a clearly missing feature rather than cosmetic work.
+10. Review labels in the repository (`agentic`, `needs-copilot`, `needs-human`,
+    `blocked`, `no-agent`, `automation`, `testing`) to ensure they exist before
+    the first verifier run creates an issue. Missing labels cause issue creation
+    to fail silently on the label assignment step.
+11. Set the `GH_AW_MODEL_AGENT_COPILOT` Actions variable to `gpt-5.4` in the
+    repository settings if you want to override the compiled default at runtime.
 
 ## Ready Handoff Prompt
 

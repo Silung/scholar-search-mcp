@@ -1,0 +1,36 @@
+name: Agentic Assign
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agentic') &&
+      contains(github.event.issue.labels.*.name, 'needs-copilot') &&
+      !contains(github.event.issue.labels.*.name, 'needs-human') &&
+      !contains(github.event.issue.labels.*.name, 'blocked') &&
+      !contains(github.event.issue.labels.*.name, 'no-agent')
+    steps:
+      - name: Assign Copilot to issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const assignees = issue.assignees.map(a => a.login);
+            if (assignees.includes('Copilot')) {
+              core.info('Copilot is already assigned to this issue. Skipping.');
+              return;
+            }
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: ['Copilot'],
+            });
+            core.info(`Assigned Copilot to issue #${issue.number}`);

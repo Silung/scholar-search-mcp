@@ -166,10 +166,15 @@ search_authors(query="Yoshua Bengio", limit=5)
   keyword search is weak.
 - **Agent UX feedback loop**: the checked-in agentic workflow at
   `.github/workflows/test-scholar-search.md` now supports `smoke`,
-  `comprehensive`, and `feature_probe` review modes. Start with the smoke
-  baseline, then add deeper OpenAlex/snippet/paper-to-author probes or a
-  feature-specific focus prompt when you need broader UX feedback that can turn
-  into code or documentation work.
+  `comprehensive`, and `feature_probe` review modes. The workflow runs GPT-5.4
+  and explicitly evaluates agent UX in every step: intuitiveness, unnecessary
+  round trips, missing features, confusing contracts, and dead-end responses.
+  Each run produces a structured UX friction summary before filing any issue.
+  Start with the smoke baseline, then add deeper probes or a feature-specific
+  focus prompt when you need broader UX feedback. Issues created by the
+  verifier carry `agentic` and `needs-copilot` labels with stable body markers
+  so the auto-assignment workflow can assign GitHub Copilot without duplicates.
+  After 3 failed fix attempts the issue escalates to `needs-human`.
 - **Explicit OpenAlex workflows**: use `search_papers_openalex` for one
   OpenAlex page, `search_papers_openalex_bulk` for OpenAlex cursor traversal,
   `get_paper_details_openalex` for OpenAlex W-id/DOI lookup, and the OpenAlex
