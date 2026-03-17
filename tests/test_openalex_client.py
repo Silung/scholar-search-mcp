@@ -71,7 +71,7 @@ def test_openalex_client_validates_mailto() -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_openalex_search_supports_supported_year_syntaxes(
+async def test_openalex_search_year_syntaxes(
     monkeypatch: pytest.MonkeyPatch,
     year: str,
     expected_filter: str,
