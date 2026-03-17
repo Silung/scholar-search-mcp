@@ -3,6 +3,9 @@ name: Agentic Assign
 on:
   issues:
     types: [opened, reopened, labeled]
+  workflow_run:
+    workflows: ["Test Scholar Search MCP"]
+    types: [completed]
 
 permissions:
   issues: write
@@ -11,26 +14,84 @@ jobs:
   assign:
     runs-on: ubuntu-latest
     if: >-
-      contains(github.event.issue.labels.*.name, 'agentic') &&
-      contains(github.event.issue.labels.*.name, 'needs-copilot') &&
-      !contains(github.event.issue.labels.*.name, 'needs-human') &&
-      !contains(github.event.issue.labels.*.name, 'blocked') &&
-      !contains(github.event.issue.labels.*.name, 'no-agent')
+      (github.event_name == 'issues' &&
+       contains(github.event.issue.labels.*.name, 'agentic') &&
+       contains(github.event.issue.labels.*.name, 'needs-copilot') &&
+       !contains(github.event.issue.labels.*.name, 'needs-human') &&
+       !contains(github.event.issue.labels.*.name, 'blocked') &&
+       !contains(github.event.issue.labels.*.name, 'no-agent')) ||
+      github.event_name == 'workflow_run'
     steps:
-      - name: Assign Copilot to issue
+      - name: Assign Copilot to matching issues
         uses: actions/github-script@v7
         with:
           script: |
-            const issue = context.payload.issue;
-            const assignees = issue.assignees.map(a => a.login);
-            if (assignees.includes('Copilot')) {
-              core.info('Copilot is already assigned to this issue. Skipping.');
+            const requiredLabels = ['agentic', 'needs-copilot'];
+            const excludedLabels = new Set(['needs-human', 'blocked', 'no-agent']);
+
+            const hasLabelsForAssignment = (issue) => {
+              const labels = new Set(
+                issue.labels.map((label) =>
+                  typeof label === 'string' ? label : label.name
+                )
+              );
+              return (
+                requiredLabels.every((label) => labels.has(label)) &&
+                !Array.from(excludedLabels).some((label) => labels.has(label))
+              );
+            };
+
+            const assignIfNeeded = async (issue) => {
+              if (!hasLabelsForAssignment(issue)) {
+                core.info(`Issue #${issue.number} does not match assignment labels. Skipping.`);
+                return false;
+              }
+
+              const assignees = issue.assignees.map((assignee) => assignee.login);
+              if (assignees.includes('Copilot')) {
+                core.info(`Copilot is already assigned to issue #${issue.number}. Skipping.`);
+                return false;
+              }
+
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                assignees: ['Copilot'],
+              });
+              core.info(`Assigned Copilot to issue #${issue.number}`);
+              return true;
+            };
+
+            if (context.eventName === 'issues') {
+              await assignIfNeeded(context.payload.issue);
               return;
             }
-            await github.rest.issues.addAssignees({
+
+            const workflowRun = context.payload.workflow_run;
+            core.info(
+              `Scanning for unassigned agentic issues after workflow run ${workflowRun.id}.`
+            );
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issue.number,
-              assignees: ['Copilot'],
+              state: 'open',
+              labels: requiredLabels.join(','),
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100,
             });
-            core.info(`Assigned Copilot to issue #${issue.number}`);
+
+            let assignedCount = 0;
+            for (const issue of issues) {
+              if (await assignIfNeeded(issue)) {
+                assignedCount += 1;
+              }
+            }
+
+            core.info(
+              assignedCount === 0
+                ? 'No matching issues needed assignment.'
+                : `Assigned Copilot to ${assignedCount} issue(s).`
+            );

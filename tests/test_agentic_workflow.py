@@ -144,3 +144,19 @@ def test_agentic_workflow_documentation_stays_in_sync() -> None:
     assert "git diff --exit-code -- .github/workflows/test-scholar-search.lock.yml" in (
         validate_workflow
     )
+
+
+def test_agentic_assign_workflow_catches_workflow_created_issues() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    assign_workflow = (
+        repo_root / ".github" / "workflows" / "agentic-assign.yml"
+    ).read_text()
+
+    assert "issues:" in assign_workflow
+    assert "workflow_run:" in assign_workflow
+    assert 'workflows: ["Test Scholar Search MCP"]' in assign_workflow
+    assert "github.event_name == 'workflow_run'" in assign_workflow
+    assert "github.rest.issues.listForRepo" in assign_workflow
+    assert "labels: requiredLabels.join(',')" in assign_workflow
+    assert "state: 'open'" in assign_workflow
+    assert "assignees: ['Copilot']" in assign_workflow

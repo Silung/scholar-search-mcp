@@ -422,11 +422,12 @@ How to update and use it:
    flow, or a confusing agent interaction to probe.
 
 The repository also includes `.github/workflows/agentic-assign.yml`, a
-lightweight workflow that triggers on `issues: types: [opened, reopened,
-labeled]` and automatically assigns GitHub Copilot to any issue labeled both
-`agentic` and `needs-copilot`, unless the issue also carries `needs-human`,
-`blocked`, or `no-agent`. This keeps verification, issue creation, and agent
-assignment as separate phases to avoid event storms.
+lightweight workflow that automatically assigns GitHub Copilot to any issue
+labeled both `agentic` and `needs-copilot`, unless the issue also carries
+`needs-human`, `blocked`, or `no-agent`. It listens to direct `issues` events
+and to completed `Test Scholar Search MCP` runs so verifier-created issues still
+get assigned even when the original issue event does not fan out into a second
+workflow run.
 
 The normal `Validate` workflow now also recompiles `test-scholar-search.md` on
 CI and fails if `.github/workflows/test-scholar-search.lock.yml` is stale, so

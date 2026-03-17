@@ -57,11 +57,11 @@ This document is the current working handoff for the fork. It is intended to giv
   pick them up. Issues include a stable `<!-- agent-loop-key: ... -->` body
   marker plus attempt metadata to prevent infinite retry loops. After 3
   failed attempts, `needs-human` replaces `needs-copilot`.
-- A new `agentic-assign.yml` workflow triggers on `issues: types: [opened,
-  reopened, labeled]` and assigns GitHub Copilot only when an issue carries
-  both `agentic` and `needs-copilot` labels but not `needs-human`, `blocked`,
-  or `no-agent`. This separates assignment from verification to avoid event
-  storms.
+- A new `agentic-assign.yml` workflow assigns GitHub Copilot only when an issue
+  carries both `agentic` and `needs-copilot` labels but not `needs-human`,
+  `blocked`, or `no-agent`. It listens to direct `issues` events and completed
+  `Test Scholar Search MCP` runs because issues created from the verifier
+  workflow do not reliably fan out into a second `issues`-triggered workflow.
 - The workflow emphasizes agent UX evaluation: each test step includes an
   explicit UX check for intuitiveness, unnecessary round trips, missing
   features, confusing contracts, and dead-end responses. A new step 11

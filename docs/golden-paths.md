@@ -172,8 +172,10 @@ search_authors(query="Yoshua Bengio", limit=5)
   Each run produces a structured UX friction summary before filing any issue.
   Start with the smoke baseline, then add deeper probes or a feature-specific
   focus prompt when you need broader UX feedback. Issues created by the
-  verifier carry `agentic` and `needs-copilot` labels with stable body markers
-  so the auto-assignment workflow can assign GitHub Copilot without duplicates.
+  verifier carry `agentic` and `needs-copilot` labels with stable body markers.
+  The auto-assignment workflow listens to both issue events and completed
+  verifier runs so workflow-created issues still get assigned to GitHub Copilot
+  without duplicates.
   After 3 failed fix attempts the issue escalates to `needs-human`.
 - **Explicit OpenAlex workflows**: use `search_papers_openalex` for one
   OpenAlex page, `search_papers_openalex_bulk` for OpenAlex cursor traversal,
