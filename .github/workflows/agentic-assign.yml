@@ -28,6 +28,9 @@ jobs:
           script: |
             const requiredLabels = new Set(['agentic', 'needs-copilot']);
             const excludedLabels = new Set(['needs-human', 'blocked', 'no-agent']);
+            const copilotAssignee = 'copilot-swe-agent[bot]';
+            const targetRepo = `${context.repo.owner}/${context.repo.repo}`;
+            const baseBranch = context.payload.repository?.default_branch || 'master';
 
             const hasLabelsForAssignment = (issue) => {
               const labels = new Set(
@@ -48,16 +51,27 @@ jobs:
               }
 
               const assignees = issue.assignees.map((assignee) => assignee.login);
-              if (assignees.includes('Copilot')) {
+              if (assignees.includes('Copilot') || assignees.includes(copilotAssignee)) {
                 core.info(`Copilot is already assigned to issue #${issue.number}. Skipping.`);
                 return false;
               }
 
-              await github.rest.issues.addAssignees({
+              await github.request('POST /repos/{owner}/{repo}/issues/{issue_number}/assignees', {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                assignees: ['Copilot'],
+                assignees: [copilotAssignee],
+                agent_assignment: {
+                  target_repo: targetRepo,
+                  base_branch: baseBranch,
+                  custom_instructions: '',
+                  custom_agent: '',
+                  model: '',
+                },
+                headers: {
+                  accept: 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                },
               });
               core.info(`Assigned Copilot to issue #${issue.number}`);
               return true;

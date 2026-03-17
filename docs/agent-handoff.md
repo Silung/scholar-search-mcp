@@ -62,6 +62,10 @@ This document is the current working handoff for the fork. It is intended to giv
   `blocked`, or `no-agent`. It listens to direct `issues` events and completed
   `Test Scholar Search MCP` runs because issues created from the verifier
   workflow do not reliably fan out into a second `issues`-triggered workflow.
+- The Copilot auto-assignment path must use GitHub's Copilot-specific issue
+  assignment contract (`copilot-swe-agent[bot]` plus `agent_assignment`). A
+  plain issue assignee write with `Copilot` can log success in Actions while
+  leaving the issue unassigned.
 - The workflow emphasizes agent UX evaluation: each test step includes an
   explicit UX check for intuitiveness, unnecessary round trips, missing
   features, confusing contracts, and dead-end responses. A new step 11

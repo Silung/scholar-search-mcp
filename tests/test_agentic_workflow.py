@@ -159,7 +159,11 @@ def test_agentic_assign_workflow_catches_workflow_created_issues() -> None:
     assert "github.rest.issues.listForRepo" in assign_workflow
     assert "labels: Array.from(requiredLabels).join(',')" in assign_workflow
     assert "state: 'open'" in assign_workflow
-    assert "assignees: ['Copilot']" in assign_workflow
+    assert "const copilotAssignee = 'copilot-swe-agent[bot]'" in assign_workflow
+    assert "agent_assignment:" in assign_workflow
+    assert "target_repo: targetRepo" in assign_workflow
+    assert "base_branch: baseBranch" in assign_workflow
+    assert "assignees: [copilotAssignee]" in assign_workflow
 
 
 def test_verifier_workflow_triggers_on_default_branch() -> None:
