@@ -198,6 +198,32 @@ class SemanticScholarClient:
         )
 
     @staticmethod
+    def _enrich_bulk_paper(paper: Paper) -> Paper:
+        """Enrich a bulk search result paper with SS expansion ID portability fields.
+
+        Mirrors ``_enrich_ss_paper`` in ``search.py`` so that ``search_papers_bulk``
+        results expose the same ``recommendedExpansionId`` / ``expansionIdStatus``
+        signals as brokered ``search_papers_semantic_scholar`` results.
+        """
+        external_ids: dict[str, Any] = (
+            (paper.model_extra or {}).get("externalIds") or {}
+        )
+        doi: str | None = external_ids.get("DOI") or None
+        arxiv_id: str | None = external_ids.get("ArXiv") or None
+        paper_id: str | None = paper.paper_id
+        source_id = paper_id
+        canonical_id: str | None = doi or paper_id or arxiv_id or source_id
+        return paper.model_copy(
+            update={
+                "source": paper.source or "semantic_scholar",
+                "source_id": source_id,
+                "canonical_id": canonical_id,
+                "recommended_expansion_id": canonical_id,
+                "expansion_id_status": "portable",
+            }
+        )
+
+    @staticmethod
     def _normalize_title_lookup_query(query: str) -> str:
         normalized = _TITLE_LOOKUP_QUOTES_PATTERN.sub(" ", query.strip())
         normalized = _TITLE_LOOKUP_PUNCTUATION_PATTERN.sub(" ", normalized)
@@ -384,6 +410,7 @@ class SemanticScholarClient:
         parsed = BulkSearchResponse.model_validate(response)
         if len(parsed.data) > limit:
             parsed.data = parsed.data[:limit]
+        parsed.data = [self._enrich_bulk_paper(paper) for paper in parsed.data]
         return dump_jsonable(parsed)
 
     async def search_papers_match(

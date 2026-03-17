@@ -167,6 +167,76 @@ async def test_search_papers_bulk_truncates_provider_oversized_batch(
     assert result["pagination"]["hasMore"] is True
     assert result["pagination"]["nextCursor"] == "tok-next"
     assert result["token"] == "tok-next"
+    # All returned papers must have expansion ID portability fields populated.
+    for paper in result["data"]:
+        assert paper["recommendedExpansionId"] == paper["paperId"]
+        assert paper["expansionIdStatus"] == "portable"
+        assert paper["source"] == "semantic_scholar"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_paper", "expected_expansion_id"),
+    [
+        # paperId only → recommendedExpansionId falls back to paperId
+        (
+            {"paperId": "aabbcc1234", "title": "Paper A"},
+            "aabbcc1234",
+        ),
+        # DOI present → recommendedExpansionId prefers DOI
+        (
+            {
+                "paperId": "aabbcc1234",
+                "title": "Paper B",
+                "externalIds": {"DOI": "10.1000/xyz"},
+            },
+            "10.1000/xyz",
+        ),
+        # No DOI but ArXiv present → falls back to paperId (paperId wins over arXiv)
+        (
+            {
+                "paperId": "aabbcc1234",
+                "title": "Paper C",
+                "externalIds": {"ArXiv": "2111.99999"},
+            },
+            "aabbcc1234",
+        ),
+    ],
+)
+async def test_search_papers_bulk_enriches_expansion_id_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_paper: dict,
+    expected_expansion_id: str,
+) -> None:
+    """search_papers_bulk must populate recommendedExpansionId and expansionIdStatus."""
+
+    async def fake_sleep(_: float) -> None:
+        pass
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, **kwargs):
+            return DummyResponse(
+                status_code=200,
+                payload={"total": 1, "data": [raw_paper]},
+            )
+
+    monkeypatch.setattr(server.httpx, "AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+
+    sc = server.SemanticScholarClient()
+    result = await sc.search_papers_bulk("test query", limit=5)
+
+    assert len(result["data"]) == 1
+    paper = result["data"][0]
+    assert paper["recommendedExpansionId"] == expected_expansion_id
+    assert paper["expansionIdStatus"] == "portable"
+    assert paper["source"] == "semantic_scholar"
 
 
 @pytest.mark.asyncio
