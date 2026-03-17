@@ -30,7 +30,7 @@
 # review modes with an optional focus prompt.
 # Requires a repository or organization secret named COPILOT_GITHUB_TOKEN.
 #
-# gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"de768fc911fc5bc444ad1199c50a5cf7356ccc0a2cac234d0da6c0eb194493b9","compiler_version":"v0.59.0","strict":true}
+# gh-aw-metadata: {"schema_version":"v2","frontmatter_hash":"35cf3dff8af480abe145569550a8fabb7d292aad2b46936847abbc71fde8c849","compiler_version":"v0.59.0","strict":true}
 
 name: "Test Scholar Search MCP"
 "on":
@@ -55,13 +55,14 @@ name: "Test Scholar Search MCP"
 permissions: {}
 
 concurrency:
-  cancel-in-progress: true
-  group: "gh-aw-${{ github.workflow }}"
+  group: "gh-aw-${{ github.workflow }}-${{ github.ref || github.run_id }}"
 
 run-name: "Test Scholar Search MCP"
 
 jobs:
   activation:
+    needs: pre_activation
+    if: needs.pre_activation.outputs.activated == 'true'
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -213,6 +214,7 @@ jobs:
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
           GH_AW_INPUTS_FOCUS_PROMPT: ${{ inputs.focus_prompt }}
           GH_AW_INPUTS_MODE: ${{ inputs.mode }}
+          GH_AW_NEEDS_PRE_ACTIVATION_OUTPUTS_ACTIVATED: ${{ needs.pre_activation.outputs.activated }}
         with:
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
@@ -233,7 +235,8 @@ jobs:
                 GH_AW_GITHUB_RUN_ID: process.env.GH_AW_GITHUB_RUN_ID,
                 GH_AW_GITHUB_WORKSPACE: process.env.GH_AW_GITHUB_WORKSPACE,
                 GH_AW_INPUTS_FOCUS_PROMPT: process.env.GH_AW_INPUTS_FOCUS_PROMPT,
-                GH_AW_INPUTS_MODE: process.env.GH_AW_INPUTS_MODE
+                GH_AW_INPUTS_MODE: process.env.GH_AW_INPUTS_MODE,
+                GH_AW_NEEDS_PRE_ACTIVATION_OUTPUTS_ACTIVATED: process.env.GH_AW_NEEDS_PRE_ACTIVATION_OUTPUTS_ACTIVATED
               }
             });
       - name: Validate prompt placeholders
@@ -258,8 +261,6 @@ jobs:
     needs: activation
     runs-on: ubuntu-latest
     permissions: read-all
-    concurrency:
-      group: "gh-aw-copilot-${{ github.workflow }}"
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       GH_AW_ASSETS_ALLOWED_EXTS: ""
@@ -1124,6 +1125,29 @@ jobs:
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
             setupGlobals(core, github, context, exec, io);
             const { main } = require('/opt/gh-aw/actions/handle_noop_message.cjs');
+            await main();
+
+  pre_activation:
+    runs-on: ubuntu-slim
+    outputs:
+      activated: ${{ steps.check_membership.outputs.is_team_member == 'true' }}
+      matched_command: ''
+    steps:
+      - name: Setup Scripts
+        uses: github/gh-aw-actions/setup@066087f607f52664010289ddd52198f33044c38a # v0.59.0
+        with:
+          destination: /opt/gh-aw/actions
+      - name: Check team membership for workflow
+        id: check_membership
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          GH_AW_REQUIRED_ROLES: admin,maintainer,write
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
+            setupGlobals(core, github, context, exec, io);
+            const { main } = require('/opt/gh-aw/actions/check_membership.cjs');
             await main();
 
   safe_outputs:
