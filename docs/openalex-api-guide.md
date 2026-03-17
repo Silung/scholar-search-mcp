@@ -151,7 +151,7 @@ Important search behavior:
 - quotes and parentheses are supported
 - stemming and stop-word removal are enabled by default
 - `*.search.no_stem` filters disable stemming for title/abstract-style search
-- wildcard and fuzzy characters like `*`, `?`, and `~` are **not** allowed in
+- wildcard and fuzzy characters like `*`, `?`, and `~` are not allowed in
   boolean search; they are removed
 
 Examples:
@@ -261,11 +261,12 @@ repo's normalized paper shape.
 
 OpenAlex exposes `abstract_inverted_index`, not a plain `abstract` string.
 
-That means a provider client would need to choose one of these approaches:
+The safest default for this repo would be:
 
-- reconstruct plaintext abstracts client-side before normalization
-- expose abstract only when reconstruction succeeds
-- omit the abstract field rather than returning a misleading partial value
+- reconstruct plaintext abstracts client-side for detail-style responses
+- omit the abstract field for search/list responses when reconstruction is not
+  worth the cost
+- never return a misleading partial abstract if reconstruction fails
 
 This is one of the biggest differences from Semantic Scholar and CORE.
 
@@ -281,7 +282,9 @@ different from the existing Semantic Scholar citation/reference endpoints.
 ### 3. Authorship payloads are capped
 
 `authorships` are limited to the first 100 authors. A future normalization layer
-should not silently imply that the author list is always exhaustive.
+should not silently imply that the author list is always exhaustive; if a work
+reaches that cap, treat the author list as potentially partial in downstream MCP
+responses and documentation.
 
 ### 4. Venue/location fields have migrated
 
