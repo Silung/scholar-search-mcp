@@ -1,11 +1,17 @@
 """Scholar Search MCP Server - Semantic Scholar API via Model Context Protocol."""
 
 import asyncio
+import io
 import json
 import logging
 import os
 import re
+import shutil
+import sys
+import tarfile
+import tempfile
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from typing import Any, Optional
@@ -20,6 +26,7 @@ logger = logging.getLogger("scholar-search-mcp")
 API_BASE_URL = "https://api.semanticscholar.org/graph/v1"
 CORE_API_BASE = "https://api.core.ac.uk/v3/search/works"
 ARXIV_API_BASE = "https://export.arxiv.org/api/query"
+ARXIV_SRC_BASE = "https://arxiv.org/src"
 
 # 429 时先多尝试几次，再用指数退避
 MAX_429_RETRIES = 6
@@ -64,6 +71,109 @@ def _arxiv_id_from_url(id_url: str) -> str:
         return id_url
     raw = m.group(1)
     return re.sub(r"v\d+$", "", raw)  # strip version
+
+
+def _normalize_arxiv_source_id(raw: str) -> str:
+    """
+    Normalize user input to an arXiv id suitable for https://arxiv.org/src/{id}.
+    Accepts plain ids, arxiv:ID, and abs/src URLs. Preserves version suffix if present.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    m = re.search(r"arxiv\.org/(?:abs|src)/([\w.-]+)", s, re.I)
+    if m:
+        return m.group(1)
+    m = re.search(r"\barxiv:\s*([\w.-]+)", s, re.I)
+    if m:
+        return m.group(1)
+    return s
+
+
+def _safe_extract_tar_gz(tar: tarfile.TarFile, dest: Path) -> None:
+    """Extract tarball under dest; block path traversal. Use data filter when available."""
+    dest = dest.resolve()
+    extract_kw: dict[str, Any] = {}
+    if sys.version_info >= (3, 12) or sys.version_info >= (3, 11, 4):
+        extract_kw["filter"] = "data"
+    for member in tar.getmembers():
+        dest_path = (dest / member.name).resolve()
+        try:
+            dest_path.relative_to(dest)
+        except ValueError:
+            raise ValueError(f"Unsafe path in archive: {member.name!r}") from None
+        tar.extract(member, dest, **extract_kw)
+
+
+def _relative_file_list(root: Path, max_files: int = 300) -> tuple[list[str], bool]:
+    """List files under root (POSIX-style paths), truncated to max_files."""
+    out: list[str] = []
+    truncated = False
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        out.append(p.relative_to(root).as_posix())
+        if len(out) >= max_files:
+            truncated = True
+            break
+    return out, truncated
+
+
+async def _download_arxiv_source_and_extract(
+    arxiv_id: str,
+    output_dir: Optional[str],
+    timeout: float = 120.0,
+) -> dict[str, Any]:
+    """
+    Download LaTeX/source bundle from arXiv (tar.gz) and extract.
+    """
+    aid = _normalize_arxiv_source_id(arxiv_id)
+    if not aid or not re.match(r"^[\w.-]+$", aid):
+        raise ValueError(
+            "Invalid arXiv id. Use e.g. 2503.23278, arXiv:2503.23278, or an arxiv.org abs/src URL."
+        )
+
+    base = output_dir or os.environ.get("SCHOLAR_ARXIV_SOURCE_DIR")
+    if not base:
+        base = str(Path(tempfile.gettempdir()) / "scholar-search-mcp-arxiv-src")
+    root = Path(base).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    extract_root = root / aid.replace(os.sep, "_").replace("..", "_")
+    if extract_root.exists():
+        shutil.rmtree(extract_root)
+    extract_root.mkdir(parents=True)
+
+    url = f"{ARXIV_SRC_BASE}/{aid}"
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        response = await client.get(url)
+        if response.status_code == 404:
+            raise ValueError(
+                f"No source package at {url} (404). The paper may have no submitted source."
+            )
+        response.raise_for_status()
+        data = response.content
+
+    if not data:
+        raise ValueError("Empty response from arXiv source URL")
+
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+            _safe_extract_tar_gz(tar, extract_root)
+    except tarfile.TarError as e:
+        raise ValueError(
+            f"Download from arXiv was not a valid tar.gz archive: {e}. "
+            f"If the paper only has PDF, source may be unavailable."
+        ) from e
+
+    files, truncated = _relative_file_list(extract_root)
+    return {
+        "arxiv_id": aid,
+        "source_url": url,
+        "extract_dir": str(extract_root),
+        "files": files,
+        "files_listed": len(files),
+        "files_truncated": truncated,
+    }
 
 
 def _text(el: Optional[ET.Element]) -> str:
@@ -699,6 +809,34 @@ async def list_tools() -> list[Tool]:
                 "required": ["paper_ids"],
             },
         ),
+        Tool(
+            name="download_arxiv_source",
+            description=(
+                "Download arXiv LaTeX/source bundle (tar.gz from https://arxiv.org/src/{id}) "
+                "and extract it to a directory. Default base directory is SCHOLAR_ARXIV_SOURCE_DIR "
+                "or the system temp folder. Overwrites a previous extract of the same id."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "arxiv_id": {
+                        "type": "string",
+                        "description": (
+                            "arXiv paper id, e.g. 2503.23278 or 2503.23278v1; or arXiv/abs/src URL; "
+                            "or arxiv:2503.23278"
+                        ),
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": (
+                            "Optional directory under which to create a folder named after the id. "
+                            "If omitted, uses env SCHOLAR_ARXIV_SOURCE_DIR or temp/scholar-search-mcp-arxiv-src"
+                        ),
+                    },
+                },
+                "required": ["arxiv_id"],
+            },
+        ),
     ]
 
 
@@ -838,6 +976,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         result = await client.batch_get_papers(
             paper_ids=arguments["paper_ids"],
             fields=arguments.get("fields"),
+        )
+    elif name == "download_arxiv_source":
+        result = await _download_arxiv_source_and_extract(
+            arxiv_id=arguments["arxiv_id"],
+            output_dir=arguments.get("output_dir"),
         )
     else:
         raise ValueError(f"Unknown tool: {name}")

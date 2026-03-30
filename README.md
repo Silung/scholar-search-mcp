@@ -10,6 +10,7 @@ A MCP server that integrates the [CORE API v3](https://api.core.ac.uk/docs/v3), 
 - **Author info** – Author profile and paper list
 - **Batch lookup** – Fetch up to 500 papers in one call
 - **Recommendations** – Similar papers for a given paper
+- **arXiv LaTeX source** – Download and extract the source tarball from `https://arxiv.org/src/{id}` (tool: `download_arxiv_source`)
 
 ## Installation
 
@@ -87,7 +88,6 @@ Control which sources are used in the `search_papers` fallback chain via environ
 | `SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR` | Use Semantic Scholar (default: true).                                  |
 | `SCHOLAR_SEARCH_ENABLE_ARXIV`            | Use arXiv (default: true).                                             |
 
-
 Example: CORE and arXiv only (skip Semantic Scholar):
 
 ```json
@@ -96,8 +96,15 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 }
 ```
 
-## Tools
+### arXiv source downloads (`download_arxiv_source`)
 
+Optional default **parent** directory for extracted sources when the tool is called without `output_dir`:
+
+| Variable                    | Description                                                                 |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `SCHOLAR_ARXIV_SOURCE_DIR` | If set, files go under `<dir>/<arxiv_id>/`. Otherwise uses a temp subfolder. |
+
+## Tools
 
 | Tool                        | Description                                                  |
 | --------------------------- | ------------------------------------------------------------ |
@@ -109,6 +116,7 @@ Example: CORE and arXiv only (skip Semantic Scholar):
 | `get_author_papers`         | Papers by author                                             |
 | `get_paper_recommendations` | Similar papers for a given paper                             |
 | `batch_get_papers`          | Details for up to 500 paper IDs                              |
+| `download_arxiv_source`     | Download arXiv source `tar.gz` and extract; args: `arxiv_id`, optional `output_dir` |
 
 
 ## Testing with MCP Inspector
