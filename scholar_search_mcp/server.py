@@ -17,6 +17,7 @@ from urllib.parse import quote_plus
 from typing import Any, Optional
 
 import httpx
+from diskcache import Cache
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
@@ -24,12 +25,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scholar-search-mcp")
 
 API_BASE_URL = "https://api.semanticscholar.org/graph/v1"
-CORE_API_BASE = "https://api.core.ac.uk/v3/search/works"
 ARXIV_API_BASE = "https://export.arxiv.org/api/query"
 ARXIV_SRC_BASE = "https://arxiv.org/src"
 
 # 429 时先多尝试几次，再用指数退避
 MAX_429_RETRIES = 6
+CACHE_TTL_SECONDS_DEFAULT = 24 * 60 * 60
 
 # Atom/arXiv XML namespaces
 ATOM_NS = "http://www.w3.org/2005/Atom"
@@ -178,150 +179,6 @@ async def _download_arxiv_source_and_extract(
 
 def _text(el: Optional[ET.Element]) -> str:
     return (el.text or "").strip() if el is not None else ""
-
-
-class CoreApiClient:
-    """CORE API v3 client (https://api.core.ac.uk/docs/v3)."""
-
-    def __init__(self, api_key: Optional[str] = None, timeout: float = 30.0):
-        self.api_key = api_key
-        self.timeout = timeout
-
-    async def search(
-        self,
-        query: str,
-        limit: int = 10,
-        start: int = 0,
-        year: Optional[str] = None,
-    ) -> dict[str, Any]:
-        """
-        Search CORE. Returns shape compatible with merge: list of normalized
-        paper dicts and total. Works without API key (subject to rate limits);
-        with key you get higher limits.
-        """
-        # CORE API GET /v3/search/works: q, scroll, offset, limit, stats only (no sort in docs)
-        params: dict[str, Any] = {
-            "q": query.strip(),
-            "limit": min(limit, 100),
-            "offset": start,
-        }
-        if year:
-            try:
-                if "-" in year:
-                    y1, y2 = year.split("-")[:2]
-                    y1, y2 = y1.strip()[:4], y2.strip()[:4]
-                    params["q"] = f"{params['q']} yearPublished:[{y1} TO {y2}]"
-                else:
-                    y = year.strip()[:4]
-                    params["q"] = f"{params['q']} yearPublished:{y}"
-            except Exception:
-                pass
-
-        headers: dict[str, str] = {}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(
-                    CORE_API_BASE,
-                    params=params,
-                    headers=headers,
-                )
-                response.raise_for_status()
-        except Exception as e:
-            logger.warning("CORE search request failed: %s", e)
-            raise
-
-        data = response.json()
-        results = data.get("results") or []
-        entries: list[dict[str, Any]] = []
-        for r in results:
-            paper = self._result_to_paper(r)
-            if paper:
-                entries.append(paper)
-        if results and len(entries) < len(results):
-            logger.debug(
-                "CORE returned %s results, %s had valid url/title (some may lack doi/downloadUrl)",
-                len(results),
-                len(entries),
-            )
-        return {"total": data.get("total_hits", len(entries)), "entries": entries}
-
-    def _result_to_paper(self, r: dict[str, Any]) -> Optional[dict[str, Any]]:
-        """Convert one CORE result to S2-compatible paper dict."""
-        title = (r.get("title") or "").strip()
-        if not title:
-            return None
-
-        url: Optional[str] = None
-        if r.get("doi"):
-            url = f"https://doi.org/{r['doi']}"
-        if not url and r.get("downloadUrl"):
-            du = r["downloadUrl"]
-            if isinstance(du, str):
-                url = du
-            elif isinstance(du, dict):
-                url = du.get("url") or du.get("link")
-                if not url and isinstance(du.get("urls"), list) and du["urls"]:
-                    url = du["urls"][0] if isinstance(du["urls"][0], str) else (du["urls"][0].get("url") or du["urls"][0].get("link") if isinstance(du["urls"][0], dict) else None)
-        if not url and r.get("sourceFulltextUrls"):
-            su = r["sourceFulltextUrls"]
-            if isinstance(su, str):
-                url = su
-            elif isinstance(su, list) and su:
-                url = su[0] if isinstance(su[0], str) else (su[0].get("url") or su[0].get("link") if isinstance(su[0], dict) else None)
-            elif isinstance(su, dict):
-                urls = su.get("urls") or su.get("url") or su.get("link")
-                url = urls[0] if isinstance(urls, list) and urls else (urls if isinstance(urls, str) else None)
-        if not url and r.get("id") is not None:
-            url = f"https://core.ac.uk/works/{r['id']}"
-        if not url:
-            return None
-
-        raw_date = r.get("publishedDate") or r.get("depositedDate")
-        year_val: Optional[int] = None
-        date_str: Optional[str] = None
-        if raw_date:
-            if isinstance(raw_date, str):
-                date_str = raw_date
-                if len(raw_date) >= 4:
-                    try:
-                        year_val = int(raw_date[:4])
-                    except ValueError:
-                        pass
-            elif hasattr(raw_date, "year"):
-                year_val = getattr(raw_date, "year", None)
-                date_str = str(raw_date)
-
-        authors: list[dict[str, Any]] = []
-        for a in r.get("authors") or []:
-            name = a.get("name") if isinstance(a, dict) else (a if isinstance(a, str) else None)
-            if name:
-                authors.append({"name": name})
-
-        pdf_url = r.get("downloadUrl")
-        if isinstance(pdf_url, dict):
-            pdf_url = pdf_url.get("url") if pdf_url else None
-        if not pdf_url and r.get("sourceFulltextUrls"):
-            su = r["sourceFulltextUrls"]
-            pdf_url = su[0] if isinstance(su, list) and su else (su if isinstance(su, str) else None)
-
-        return {
-            "paperId": str(r.get("id", r.get("doi", ""))),
-            "title": title,
-            "abstract": (r.get("abstract") or r.get("fullText") or "")[:5000] or None,
-            "year": year_val,
-            "authors": authors,
-            "citationCount": r.get("citationCount"),
-            "referenceCount": None,
-            "influentialCitationCount": None,
-            "venue": (", ".join(j.get("title", "") for j in (r.get("journals") or []) if isinstance(j, dict) and j.get("title")) or None),
-            "publicationTypes": r.get("documentType"),
-            "publicationDate": date_str,
-            "url": url,
-            "pdfUrl": pdf_url,
-            "source": "core",
-        }
 
 
 class ArxivClient:
@@ -625,14 +482,34 @@ def _env_bool(key: str, default: bool = True) -> bool:
     return v.strip().lower() in ("1", "true", "yes")
 
 
+def _env_int(key: str, default: int) -> int:
+    """Parse env as int; fallback to default when missing/invalid."""
+    v = os.environ.get(key)
+    if v is None or v == "":
+        return default
+    try:
+        return int(v)
+    except ValueError:
+        logger.warning("Invalid int env %s=%r; fallback to %s", key, v, default)
+        return default
+
+
+def _cache_key(tool_name: str, arguments: dict[str, Any]) -> str:
+    """Build a stable cache key from tool name + args."""
+    return f"{tool_name}:{json.dumps(arguments, sort_keys=True, ensure_ascii=False, separators=(',', ':'))}"
+
+
 app = Server("scholar-search")
 api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
-core_api_key = os.environ.get("CORE_API_KEY")
-enable_core = _env_bool("SCHOLAR_SEARCH_ENABLE_CORE", True)
 enable_semantic_scholar = _env_bool("SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR", True)
 enable_arxiv = _env_bool("SCHOLAR_SEARCH_ENABLE_ARXIV", True)
+cache_dir = os.environ.get(
+    "SCHOLAR_SEARCH_CACHE_DIR",
+    str(Path(tempfile.gettempdir()) / "scholar-search-mcp-cache"),
+)
+cache_ttl_seconds = max(1, _env_int("SCHOLAR_SEARCH_CACHE_TTL_SECONDS", CACHE_TTL_SECONDS_DEFAULT))
+response_cache = Cache(cache_dir)
 client = SemanticScholarClient(api_key=api_key)
-core_client = CoreApiClient(api_key=core_api_key)
 arxiv_client = ArxivClient()
 
 
@@ -840,104 +717,160 @@ async def list_tools() -> list[Tool]:
     ]
 
 
-def _merge_search_results(
-    s2_response: dict[str, Any],
-    arxiv_response: dict[str, Any],
+def _normalize_title_key(title: Optional[str]) -> str:
+    """Normalize title for dedupe key (case/space-insensitive)."""
+    if not title:
+        return ""
+    return re.sub(r"\s+", " ", title).strip().casefold()
+
+
+def _is_empty_value(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _merge_author_lists(base: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge author lists and dedupe by normalized name."""
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for author in [*(base or []), *(incoming or [])]:
+        if not isinstance(author, dict):
+            continue
+        name = (author.get("name") or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(author)
+    return merged
+
+
+def _merge_source_tags(existing: dict[str, Any], incoming: dict[str, Any], fallback_source: str) -> None:
+    """Keep backward-compatible source while exposing all matched channels via sources[]."""
+    all_sources: list[str] = []
+    for src in [existing.get("source"), incoming.get("source"), fallback_source]:
+        if isinstance(src, str) and src and src not in all_sources:
+            all_sources.append(src)
+    for src_list in [existing.get("sources"), incoming.get("sources")]:
+        if isinstance(src_list, list):
+            for src in src_list:
+                if isinstance(src, str) and src and src not in all_sources:
+                    all_sources.append(src)
+    if all_sources:
+        existing["source"] = all_sources[0]
+        existing["sources"] = all_sources
+
+
+def _merge_paper_by_title(existing: dict[str, Any], incoming: dict[str, Any], source_name: str) -> None:
+    """Merge duplicate papers identified by title key."""
+    numeric_max_fields = {"citationCount", "referenceCount", "influentialCitationCount"}
+    for key, incoming_val in incoming.items():
+        if key in ("source", "sources"):
+            continue
+        current_val = existing.get(key)
+        if key in numeric_max_fields and isinstance(current_val, int) and isinstance(incoming_val, int):
+            existing[key] = max(current_val, incoming_val)
+            continue
+        if key == "abstract" and isinstance(current_val, str) and isinstance(incoming_val, str):
+            if len(incoming_val.strip()) > len(current_val.strip()):
+                existing[key] = incoming_val
+            continue
+        if key == "authors" and isinstance(current_val, list) and isinstance(incoming_val, list):
+            existing[key] = _merge_author_lists(current_val, incoming_val)
+            continue
+        if _is_empty_value(current_val) and not _is_empty_value(incoming_val):
+            existing[key] = incoming_val
+    _merge_source_tags(existing, incoming, source_name)
+
+
+def _merge_parallel_search_results(
+    source_results: dict[str, list[dict[str, Any]]],
     limit: int,
 ) -> dict[str, Any]:
-    """Merge Semantic Scholar and arXiv results; keep same response shape (total, offset, data)."""
-    s2_data = list(s2_response.get("data") or [])
-    arxiv_entries = list(arxiv_response.get("entries") or [])
-    for p in s2_data:
-        p.setdefault("source", "semantic_scholar")
-    # Dedupe: skip arXiv entries whose id already appears in S2 (when externalIds present)
-    seen_arxiv_ids = set()
-    for p in s2_data:
-        eid = p.get("externalIds") or {}
-        arxiv_id = eid.get("ArXiv")
-        if arxiv_id:
-            seen_arxiv_ids.add(str(arxiv_id))
-    merged = list(s2_data)
-    for p in arxiv_entries:
-        aid = p.get("paperId") or ""
-        if aid and aid not in seen_arxiv_ids:
-            seen_arxiv_ids.add(aid)
-            merged.append(p)
-    merged = merged[:limit]
-    return {
-        "total": len(merged),
-        "offset": s2_response.get("offset", 0),
-        "data": merged,
-    }
-
-
-def _core_response_to_merged(core_response: dict[str, Any], limit: int) -> dict[str, Any]:
-    """Convert CORE search response to unified shape (total, offset, data)."""
-    entries = list(core_response.get("entries") or [])
-    return {
-        "total": core_response.get("total", len(entries)),
-        "offset": 0,
-        "data": entries[:limit],
-    }
+    """Merge multi-source results by normalized title key."""
+    # Keep S2 first to preserve richer citation metadata when duplicates occur.
+    merge_priority = ["semantic_scholar", "arxiv"]
+    merged_by_title: dict[str, dict[str, Any]] = {}
+    ordered_keys: list[str] = []
+    for source in merge_priority:
+        for paper in source_results.get(source, []):
+            if not isinstance(paper, dict):
+                continue
+            paper.setdefault("source", source)
+            title_key = _normalize_title_key(paper.get("title"))
+            if not title_key:
+                continue
+            if title_key not in merged_by_title:
+                merged_by_title[title_key] = dict(paper)
+                _merge_source_tags(merged_by_title[title_key], paper, source)
+                ordered_keys.append(title_key)
+                continue
+            _merge_paper_by_title(merged_by_title[title_key], paper, source)
+    merged = [merged_by_title[k] for k in ordered_keys]
+    return {"total": len(merged), "offset": 0, "data": merged[:limit]}
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Handle tool calls."""
+    cache_key: Optional[str] = None
+    if name == "search_papers":
+        cache_key = _cache_key(name, arguments)
+        cached = response_cache.get(cache_key)
+        if cached is not None:
+            logger.info("cache hit: %s", name)
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(cached, ensure_ascii=False, indent=2),
+                )
+            ]
+
     if name == "search_papers":
         limit = arguments.get("limit", 10)
         limit = min(max(1, limit), 100)
         year = arguments.get("year")
         query = arguments["query"]
-        # Fallback chain: CORE → Semantic Scholar → arXiv (each step only if channel enabled)
-        result = None
-        if enable_core:
-            try:
-                core_response = await core_client.search(
-                    query=query,
-                    limit=limit,
-                    start=0,
-                    year=year,
-                )
-                if core_response.get("entries"):
-                    result = _core_response_to_merged(core_response, limit)
-                    logger.info("search_papers: using CORE API results")
-            except Exception as e:
-                logger.info("search_papers: CORE failed (%s), falling back to next channel", e)
-        if result is None and enable_semantic_scholar:
-            try:
-                s2_response = await client.search_papers(
+        # Parallel fetching: query all enabled channels concurrently, then merge by title.
+        search_tasks: dict[str, asyncio.Future] = {}
+        if enable_semantic_scholar:
+            search_tasks["semantic_scholar"] = asyncio.create_task(
+                client.search_papers(
                     query=query,
                     limit=limit,
                     fields=arguments.get("fields"),
                     year=year,
                     venue=arguments.get("venue"),
                 )
-                if s2_response.get("data"):
-                    result = {
-                        "total": s2_response.get("total", len(s2_response.get("data", []))),
-                        "offset": s2_response.get("offset", 0),
-                        "data": (s2_response.get("data") or [])[:limit],
-                    }
-                    for p in result["data"]:
-                        p.setdefault("source", "semantic_scholar")
-                    logger.info("search_papers: using Semantic Scholar results")
-            except Exception as e:
-                logger.info("search_papers: Semantic Scholar failed (%s), falling back to next channel", e)
-        if result is None and enable_arxiv:
-            arxiv_response = await arxiv_client.search(
-                query=query,
-                limit=limit,
-                year=year,
             )
-            if arxiv_response.get("entries"):
-                result = _core_response_to_merged(
-                    {"total": arxiv_response.get("totalResults", 0), "entries": arxiv_response["entries"]},
-                    limit,
+        if enable_arxiv:
+            search_tasks["arxiv"] = asyncio.create_task(
+                arxiv_client.search(
+                    query=query,
+                    limit=limit,
+                    year=year,
                 )
-                logger.info("search_papers: using arXiv results")
-        if result is None:
-            result = {"total": 0, "offset": 0, "data": []}
+            )
+
+        source_entries: dict[str, list[dict[str, Any]]] = {
+            "semantic_scholar": [],
+            "arxiv": [],
+        }
+        if search_tasks:
+            task_results = await asyncio.gather(*search_tasks.values(), return_exceptions=True)
+            for source, task_result in zip(search_tasks.keys(), task_results):
+                if isinstance(task_result, Exception):
+                    logger.info("search_papers: %s failed in parallel fetch (%s)", source, task_result)
+                    continue
+                if source == "semantic_scholar":
+                    source_entries[source] = list(task_result.get("data") or [])
+                    logger.info("search_papers: semantic_scholar returned %s items", len(source_entries[source]))
+                else:
+                    source_entries[source] = list(task_result.get("entries") or [])
+                    logger.info("search_papers: %s returned %s items", source, len(source_entries[source]))
+
+        result = _merge_parallel_search_results(source_entries, limit)
     elif name == "get_paper_details":
         result = await client.get_paper_details(
             paper_id=arguments["paper_id"],
@@ -985,6 +918,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     else:
         raise ValueError(f"Unknown tool: {name}")
 
+    if cache_key is not None:
+        response_cache.set(cache_key, result, expire=cache_ttl_seconds)
+
     return [
         TextContent(
             type="text",
@@ -999,16 +935,12 @@ def main() -> None:
     from mcp.server.stdio import stdio_server
 
     logger.info("Starting Scholar Search MCP Server...")
-    logger.info("Search channels: CORE=%s, Semantic Scholar=%s, arXiv=%s", enable_core, enable_semantic_scholar, enable_arxiv)
+    logger.info("Search channels: Semantic Scholar=%s, arXiv=%s", enable_semantic_scholar, enable_arxiv)
+    logger.info("Local cache enabled: dir=%s, ttl_seconds=%s", cache_dir, cache_ttl_seconds)
     if api_key:
         logger.info("Semantic Scholar API key detected")
     else:
         logger.warning("No Semantic Scholar API key; using public rate limits")
-    if core_api_key:
-        logger.info("CORE API key set (search tries CORE first with higher limits)")
-    else:
-        logger.info("No CORE API key; search still tries CORE first (subject to rate limits), then S2/arXiv")
-
     async def arun() -> None:
         async with stdio_server() as (read_stream, write_stream):
             await app.run(
