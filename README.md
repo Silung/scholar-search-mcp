@@ -1,50 +1,85 @@
 # Scholar Search MCP
 
-A MCP server that integrates the [Semantic Scholar API](https://www.semanticscholar.org/product/api) and [arXiv API](https://info.arxiv.org/help/api/user-manual.html) so AI assistants (e.g. Claude, Cursor) can search and fetch academic paper metadata.
+An MCP server for academic literature workflows in Claude, Cursor, and other MCP clients.
 
-## Features
+It combines **Semantic Scholar + arXiv** into one unified toolset, with fast parallel search, normalized outputs, source-aware deduplication, and practical research utilities (citations, references, author graph, recommendations, and arXiv source download).
 
-- **Search papers** – Keyword search with parallel merge from **Semantic Scholar** and **arXiv**; optional year and venue filters (venue applies to Semantic Scholar only)
-- **Paper details** – Full metadata (title, authors, abstract, citations, etc.)
-- **Citations & references** – Papers that cite or are cited by a given paper
-- **Author info** – Author profile and paper list
-- **Batch lookup** – Fetch up to 500 papers in one call
-- **Recommendations** – Similar papers for a given paper
-- **arXiv LaTeX source** – Download and extract the source tarball from `https://arxiv.org/src/{id}` (tool: `download_arxiv_source`)
+---
 
-## Installation
+## Table of Contents
+
+- [Why this project](#why-this-project)
+- [What you get](#what-you-get)
+- [Source strategy](#source-strategy)
+- [Install](#install)
+- [Quick setup (Claude Desktop)](#quick-setup-claude-desktop)
+- [Quick setup (Cursor)](#quick-setup-cursor)
+- [Environment variables](#environment-variables)
+- [Tool list](#tool-list)
+- [Testing with MCP Inspector](#testing-with-mcp-inspector)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Why this project
+
+Most paper tools force you to choose one source or one API style. `scholar-search-mcp` focuses on a simple goal:
+
+- **One MCP server, multiple scholarly sources**
+- **Free-first defaults** (`arXiv` works without keys)
+- **LLM-friendly outputs** for downstream reasoning and agent workflows
+- **Practical research actions**, not only search
+
+If you use AI agents for research, this gives you a cleaner and more reliable paper retrieval layer.
+
+## What you get
+
+- **Unified search (`search_papers`)**
+  - Queries Semantic Scholar and arXiv in parallel
+  - Merges and deduplicates results by normalized title
+  - Keeps richer metadata when overlaps occur
+- **Rich paper graph operations**
+  - Paper details, citations, references, author profile, author papers, recommendations
+- **Batch retrieval**
+  - Fetch up to 500 papers in one call (`batch_get_papers`)
+- **arXiv source workflow**
+  - Download and safely extract LaTeX/source tarballs via `download_arxiv_source`
+- **Built-in response caching**
+  - Improves repeated query latency and reduces API pressure
+- **Channel control by env vars**
+  - Turn Semantic Scholar / arXiv on or off without code changes
+
+## Source strategy
+
+Current built-in sources:
+
+- **Semantic Scholar** (metadata-rich, optional API key for better limits)
+- **arXiv** (open and key-free)
+
+Design principle:
+
+1. Prefer open/public access paths first.
+2. Support optional API keys when they improve stability or rate limits.
+3. Keep outputs consistent for LLM consumption across different upstreams.
+
+## Install
 
 ```bash
 pip install scholar-search-mcp
 ```
 
-## Configuration
+> Requires Python 3.10+.
 
-### Claude Desktop
+## Quick setup (Claude Desktop)
 
-Edit the config file:
+Config file locations:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
-Add:
-
-```json
-{
-  "mcpServers": {
-    "scholar-search": {
-      "command": "python",
-      "args": ["-m", "scholar_search_mcp"],
-      "env": {
-        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true", // enable https://www.semanticscholar.org/
-        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true" // enable https://arxiv.org/
-      }
-    }
-  }
-}
-```
-
-If you have API keys (optional but recommended for search):
+Minimal config:
 
 ```json
 {
@@ -53,66 +88,73 @@ If you have API keys (optional but recommended for search):
       "command": "python",
       "args": ["-m", "scholar_search_mcp"],
       "env": {
-        "SEMANTIC_SCHOLAR_API_KEY": "your-semantic-scholar-api-key-here",
-        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true", // enable https://www.semanticscholar.org/
-        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true" // enable https://arxiv.org/
+        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
+        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
       }
     }
   }
 }
 ```
 
-### Cursor
-
-Add an MCP server in Cursor settings with the same `command`, `args`, and `env` as above.
-
-### API keys (optional)
-
-`search_papers` queries enabled sources in parallel and merges results by title:
-
-1. **Semantic Scholar** – Works without a key with lower limits. Set `SEMANTIC_SCHOLAR_API_KEY` for higher limits.
-2. **arXiv** – No key required.
-
-### Enable/disable search channels
-
-Control which sources are used in `search_papers` via environment variables (default: all enabled):
-
-
-| Variable                                 | Description                           |
-| ---------------------------------------- | ------------------------------------- |
-| `SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR` | Use Semantic Scholar (default: true). |
-| `SCHOLAR_SEARCH_ENABLE_ARXIV`            | Use arXiv (default: true).            |
-
-Example: CORE and arXiv only (skip Semantic Scholar):
+Recommended (with optional Semantic Scholar key):
 
 ```json
-"env": {
-  "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "false"
+{
+  "mcpServers": {
+    "scholar-search": {
+      "command": "python",
+      "args": ["-m", "scholar_search_mcp"],
+      "env": {
+        "SEMANTIC_SCHOLAR_API_KEY": "your-key",
+        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
+        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
+      }
+    }
+  }
 }
 ```
 
-### arXiv source downloads (`download_arxiv_source`)
+## Quick setup (Cursor)
 
-Optional default **parent** directory for extracted sources when the tool is called without `output_dir`:
+Add an MCP server in Cursor with the same:
 
-| Variable                    | Description                                                                 |
-| --------------------------- | ----------------------------------------------------------------------------- |
-| `SCHOLAR_ARXIV_SOURCE_DIR` | If set, files go under `<dir>/<arxiv_id>/`. Otherwise uses a temp subfolder. |
+- `command`: `python`
+- `args`: `["-m", "scholar_search_mcp"]`
+- `env`: same variables as above
 
-## Tools
+## Environment variables
 
-| Tool                        | Description                                                  |
-| --------------------------- | ------------------------------------------------------------ |
-| `search_papers`             | Search by query; optional `limit`, `fields`, `year`, `venue` |
-| `get_paper_details`         | Get one paper by ID (DOI, ArXiv ID, S2 ID, or URL)           |
-| `get_paper_citations`       | Papers that cite the given paper                             |
-| `get_paper_references`      | References of the given paper                                |
-| `get_author_info`           | Author profile by ID                                         |
-| `get_author_papers`         | Papers by author                                             |
-| `get_paper_recommendations` | Similar papers for a given paper                             |
-| `batch_get_papers`          | Details for up to 500 paper IDs                              |
-| `download_arxiv_source`     | Download arXiv source `tar.gz` and extract; args: `arxiv_id`, optional `output_dir` |
+| Variable | Description |
+| --- | --- |
+| `SEMANTIC_SCHOLAR_API_KEY` | Optional. Increases Semantic Scholar rate limits. |
+| `SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR` | `true/false`, default `true`. |
+| `SCHOLAR_SEARCH_ENABLE_ARXIV` | `true/false`, default `true`. |
+| `SCHOLAR_SEARCH_CACHE_DIR` | Optional cache directory path. |
+| `SCHOLAR_SEARCH_CACHE_TTL_SECONDS` | Cache TTL in seconds, default `86400`. |
+| `SCHOLAR_ARXIV_SOURCE_DIR` | Default parent directory for extracted arXiv sources. |
 
+Example: run arXiv-only mode
+
+```json
+{
+  "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "false",
+  "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
+}
+```
+
+## Tool list
+
+| Tool | Purpose |
+| --- | --- |
+| `search_papers` | Search papers with optional `limit`, `fields`, `year`, `venue`. |
+| `get_paper_details` | Get one paper by DOI, arXiv ID, S2 ID, or URL. |
+| `get_paper_citations` | Get papers that cite a given paper. |
+| `get_paper_references` | Get references of a given paper. |
+| `get_author_info` | Get an author profile by ID. |
+| `get_author_papers` | Get papers by a given author. |
+| `get_paper_recommendations` | Get similar paper recommendations. |
+| `batch_get_papers` | Batch fetch paper details (up to 500 IDs). |
+| `download_arxiv_source` | Download and extract arXiv source bundle (`tar.gz`). |
 
 ## Testing with MCP Inspector
 
@@ -121,12 +163,23 @@ npm install -g @modelcontextprotocol/inspector
 mcp-inspector python -m scholar_search_mcp
 ```
 
+## Contributing
+
+Issues and pull requests are welcome.
+
+If you want to contribute:
+
+1. Fork the repo
+2. Create a feature branch
+3. Add tests or reproducible validation steps
+4. Open a PR with clear before/after behavior
+
 ## License
 
 MIT
 
-## Links
+## References
 
-- [Semantic Scholar API](https://api.semanticscholar.org/api-docs)
-- [arXiv API User's Manual](https://info.arxiv.org/help/api/user-manual.html)
+- [Semantic Scholar API Docs](https://api.semanticscholar.org/api-docs)
+- [arXiv API User Manual](https://info.arxiv.org/help/api/user-manual.html)
 
