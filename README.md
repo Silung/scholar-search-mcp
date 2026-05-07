@@ -10,6 +10,7 @@ It combines **Semantic Scholar + arXiv** into one unified toolset, with fast par
 
 - [Why this project](#why-this-project)
 - [What you get](#what-you-get)
+- [Demo videos](#demo-videos)
 - [Source strategy](#source-strategy)
 - [Install](#install)
 - [Quick setup (Claude Desktop)](#quick-setup-claude-desktop)
@@ -49,6 +50,14 @@ If you use AI agents for research, this gives you a cleaner and more reliable pa
   - Improves repeated query latency and reduces API pressure
 - **Channel control by env vars**
   - Turn Semantic Scholar / arXiv on or off without code changes
+
+## Demo videos
+
+Agent writes a survey paper with Scholar Search MCP.
+
+   <a href="https://youtu.be/C81rVeznoRY"><img src="./static/scholar_search_demo.jpg" alt="Agent uses Scholar Search MCP to write a survey paper" width="640" style="max-width: 100%; height: auto;"></a>
+
+<br>
 
 ## Source strategy
 
