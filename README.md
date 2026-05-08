@@ -9,12 +9,9 @@ It combines **Semantic Scholar + arXiv** into one unified toolset, with fast par
 ## Table of Contents
 
 - [Why this project](#why-this-project)
-- [What you get](#what-you-get)
 - [Demo videos](#demo-videos)
-- [Source strategy](#source-strategy)
 - [Install](#install)
-- [Quick setup (Claude Desktop)](#quick-setup-claude-desktop)
-- [Quick setup (Cursor)](#quick-setup-cursor)
+- [Quick setup (Claude Desktop / Cursor)](#quick-setup-claude-desktop--cursor)
 - [Environment variables](#environment-variables)
 - [Tool list](#tool-list)
 - [Testing with MCP Inspector](#testing-with-mcp-inspector)
@@ -25,31 +22,17 @@ It combines **Semantic Scholar + arXiv** into one unified toolset, with fast par
 
 ## Why this project
 
-Most paper tools force you to choose one source or one API style. `scholar-search-mcp` focuses on a simple goal:
+Most paper tools force you to choose one source or one API style. `scholar-search-mcp` provides one MCP layer for literature search and graph retrieval:
 
 - **One MCP server, multiple scholarly sources**
 - **Free-first defaults** (`arXiv` works without keys)
 - **LLM-friendly outputs** for downstream reasoning and agent workflows
 - **Practical research actions**, not only search
-
-If you use AI agents for research, this gives you a cleaner and more reliable paper retrieval layer.
-
-## What you get
-
-- **Unified search (`search_papers`)**
-  - Queries Semantic Scholar and arXiv in parallel
-  - Merges and deduplicates results by normalized title
-  - Keeps richer metadata when overlaps occur
-- **Rich paper graph operations**
-  - Paper details, citations, references, author profile, author papers, recommendations
-- **Batch retrieval**
-  - Fetch up to 500 papers in one call (`batch_get_papers`)
-- **arXiv source workflow**
-  - Download and safely extract LaTeX/source tarballs via `download_arxiv_source`
-- **Built-in response caching**
-  - Improves repeated query latency and reduces API pressure
-- **Channel control by env vars**
-  - Turn Semantic Scholar / arXiv on or off without code changes
+- **Unified search**: `search_papers` runs Semantic Scholar + arXiv in parallel and deduplicates by normalized title.
+- **Research graph tools**: details, citations, references, author profile/papers, and recommendations.
+- **Batch + source workflows**: fetch up to 500 papers, and download/extract arXiv LaTeX sources.
+- **Operational controls**: built-in caching plus env-based source toggles (enable/disable channels).
+- **Source strategy**: built-in Semantic Scholar + arXiv, free-first by default (`arXiv` key-free), optional API key for higher Semantic Scholar limits.
 
 ## Demo videos
 
@@ -59,19 +42,6 @@ Agent writes a survey paper with Scholar Search MCP.
 
 <br>
 
-## Source strategy
-
-Current built-in sources:
-
-- **Semantic Scholar** (metadata-rich, optional API key for better limits)
-- **arXiv** (open and key-free)
-
-Design principle:
-
-1. Prefer open/public access paths first.
-2. Support optional API keys when they improve stability or rate limits.
-3. Keep outputs consistent for LLM consumption across different upstreams.
-
 ## Install
 
 ```bash
@@ -80,56 +50,53 @@ pip install scholar-search-mcp
 
 > Requires Python 3.10+.
 
-## Quick setup (Claude Desktop)
+## Quick setup (Claude Desktop / Cursor)
 
-Config file locations:
+Use the same server command in both clients:
+
+```json
+{
+  "mcpServers": {
+    "scholar-search": {
+      "command": "python",
+      "args": ["-m", "scholar_search_mcp"],
+      "env": {
+        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
+        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
+      }
+    }
+  }
+}
+```
+
+`SEMANTIC_SCHOLAR_API_KEY` is optional. Add it only if you want higher Semantic Scholar rate limits:
+
+```json
+{
+  "mcpServers": {
+    "scholar-search": {
+      "command": "python",
+      "args": ["-m", "scholar_search_mcp"],
+      "env": {
+        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
+        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true",
+        "SEMANTIC_SCHOLAR_API_KEY": "your-key"
+      }
+    }
+  }
+}
+```
+
+Difference:
+
+- **Claude Desktop**: edit local config file directly.
+- **Cursor**: add an MCP server in Cursor settings UI (or corresponding settings JSON).
+
+Claude Desktop config file locations:
 
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 - **Linux**: `~/.config/Claude/claude_desktop_config.json`
-
-Minimal config:
-
-```json
-{
-  "mcpServers": {
-    "scholar-search": {
-      "command": "python",
-      "args": ["-m", "scholar_search_mcp"],
-      "env": {
-        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
-        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
-      }
-    }
-  }
-}
-```
-
-Recommended (with optional Semantic Scholar key):
-
-```json
-{
-  "mcpServers": {
-    "scholar-search": {
-      "command": "python",
-      "args": ["-m", "scholar_search_mcp"],
-      "env": {
-        "SEMANTIC_SCHOLAR_API_KEY": "your-key",
-        "SCHOLAR_SEARCH_ENABLE_SEMANTIC_SCHOLAR": "true",
-        "SCHOLAR_SEARCH_ENABLE_ARXIV": "true"
-      }
-    }
-  }
-}
-```
-
-## Quick setup (Cursor)
-
-Add an MCP server in Cursor with the same:
-
-- `command`: `python`
-- `args`: `["-m", "scholar_search_mcp"]`
-- `env`: same variables as above
 
 ## Environment variables
 
@@ -142,7 +109,7 @@ Add an MCP server in Cursor with the same:
 | `SCHOLAR_SEARCH_CACHE_TTL_SECONDS` | Cache TTL in seconds, default `86400`. |
 | `SCHOLAR_ARXIV_SOURCE_DIR` | Default parent directory for extracted arXiv sources. |
 
-Example: run arXiv-only mode
+Example (`arXiv` only):
 
 ```json
 {
@@ -174,14 +141,7 @@ mcp-inspector python -m scholar_search_mcp
 
 ## Contributing
 
-Issues and pull requests are welcome.
-
-If you want to contribute:
-
-1. Fork the repo
-2. Create a feature branch
-3. Add tests or reproducible validation steps
-4. Open a PR with clear before/after behavior
+Issues and PRs are welcome: fork repo, create branch, add validation/tests, and open a PR with clear before/after behavior.
 
 ## License
 
